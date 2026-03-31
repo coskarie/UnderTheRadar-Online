@@ -77,7 +77,6 @@
         let myName = "", myRoom = "", myUnits = [], isMyTurn = false;
         let gameStatus = "LOBBY", selectedUnitType = null, currentRotation = 0;
 
-        // 테스트에서 성공한 데이터 규격 그대로 사용
         const UNIT_DATA = {
             'ㄷ': [[1,1,0], [1,0,0], [1,1,0]],
             'L': [[1,0,0], [1,0,0], [1,1,0]],
@@ -119,11 +118,9 @@
             if(selectedUnitType) showGhost(lastHoverIdx);
         }
 
-        // 테스트에서 성공한 "중심점 투영" 로직
         function getCells(type, pivotIdx, rotation) {
             let matrix = UNIT_DATA[type];
             if(!matrix) return [];
-
             let rotated = JSON.parse(JSON.stringify(matrix));
             const times = (rotation / 90) % 4;
             for(let t=0; t<times; t++) {
@@ -132,11 +129,9 @@
                 for(let i=0; i<r; i++) { for(let j=0; j<c; j++) { newMat[j][r-1-i] = rotated[i][j]; } }
                 rotated = newMat;
             }
-
             const rows = rotated.length, cols = rotated[0].length;
             const midR = Math.floor(rows / 2), midC = Math.floor(cols / 2);
             const px = pivotIdx % 20, py = Math.floor(pivotIdx / 20);
-            
             let resultCells = [];
             for(let r=0; r<rows; r++) {
                 for(let c=0; c<cols; c++) {
@@ -151,7 +146,6 @@
         }
 
         function placeOrPickUnit(idx) {
-            // 문지기(gameStatus) 검사를 제거하여 배치 자유도 보장
             const uIdx = myUnits.findIndex(u => u.cells.includes(idx));
             if (uIdx !== -1) {
                 const u = myUnits.splice(uIdx, 1)[0];
@@ -160,15 +154,12 @@
                 addGameLog(`[회수] ${u.type} 블록`);
                 return;
             }
-
             if(!selectedUnitType || inventory[selectedUnitType] <= 0) return;
-
             const cells = getCells(selectedUnitType, idx, currentRotation);
             if(cells.includes(-1) || cells.some(c => myUnits.some(u => u.cells.includes(c)))) {
                 addGameLog("[실패] 배치 불가");
                 return;
             }
-
             myUnits.push({ type: selectedUnitType, cells: cells });
             inventory[selectedUnitType]--;
             if(inventory[selectedUnitType] <= 0) selectedUnitType = null;
@@ -218,22 +209,59 @@
             }
         }
 
+        // [수리 완료] 역할 변경 함수
+        function changeRole(role) {
+            socket.emit('changeRole', role);
+            addGameLog(`[시스템] ${role === 'player' ? '플레이어' : '관전자'}로 변경 요청`);
+        }
+
+        // [수리 완료] 실시간 명단 갱신 로직
         socket.on('roomData', data => {
-            const me = data.players.find(p => p.id === socket.id), opp = data.players.find(p => p.id !== socket.id);
+            const me = data.players.find(p => p.id === socket.id);
+            const opp = data.players.find(p => p.id !== socket.id);
             gameStatus = data.gameState;
+
+            // 내 상태 표시
             document.getElementById('my-v').style.display = (me && me.isReady) ? 'inline' : 'none';
-            if (opp) { document.getElementById('opp-name').innerText = opp.name; document.getElementById('opp-v').style.display = opp.isReady ? 'inline' : 'none'; }
-            if (data.gameState === 'LOBBY') {
-                const btn = document.getElementById('start-btn'); btn.disabled = false;
-                if (data.players.length === 2 && data.players.every(p => p.isReady)) { btn.innerText = "게임 시작하기!"; btn.style.background = "#FF9800"; }
-                else { btn.innerText = (me && me.isReady) ? "준비 취소" : "준비하기"; btn.style.background = "#4CAF50"; }
+            document.getElementById('my-name-display').innerText = me ? me.name : myName + " (관전 중)";
+
+            // 상대 상태 표시
+            if (opp) {
+                document.getElementById('opp-name').innerText = opp.name;
+                document.getElementById('opp-v').style.display = opp.isReady ? 'inline' : 'none';
+            } else {
+                document.getElementById('opp-name').innerText = "대기 중";
+                document.getElementById('opp-v').style.display = 'none';
             }
-            document.getElementById('player-list').innerText = "플레이어: " + data.players.map(p => p.name).join(', ');
+
+            // 준비 버튼 텍스트 관리
+            const btn = document.getElementById('start-btn');
+            if (data.gameState === 'LOBBY') {
+                btn.disabled = false;
+                if (data.players.length === 2 && data.players.every(p => p.isReady)) {
+                    btn.innerText = "게임 시작하기!";
+                    btn.style.background = "#FF9800";
+                } else {
+                    btn.innerText = (me && me.isReady) ? "준비 취소" : "준비하기";
+                    btn.style.background = "#4CAF50";
+                }
+            }
+
+            // 접속자 명단 텍스트 업데이트
+            document.getElementById('player-list').innerText = "플레이어: " + data.players.map(p => p.name + (p.isReady ? " [V]" : "")).join(', ');
             document.getElementById('spectator-list').innerText = "관전자: " + data.spectators.map(s => s.name).join(', ');
         });
 
-        socket.on('startPlacing', () => { gameStatus = "PLACING"; const b = document.getElementById('start-btn'); b.innerText = "배치 확정"; b.style.background = "#2ecc71"; });
+        socket.on('startPlacing', () => { 
+            gameStatus = "PLACING"; 
+            const b = document.getElementById('start-btn');
+            b.innerText = "배치 확정"; 
+            b.style.background = "#2ecc71";
+            b.disabled = false;
+        });
+
         socket.on('gameStart', d => { gameStatus = "PLAYING"; updateTurn(d.turn); });
+        
         socket.on('attackResult', d => {
             const g = (d.attacker === socket.id) ? document.getElementById('opponent-grid') : document.getElementById('my-grid');
             g.children[d.index].classList.add(d.hit ? 'hit-unit' : 'miss-cell');
