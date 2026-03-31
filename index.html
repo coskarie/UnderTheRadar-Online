@@ -2,40 +2,82 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>배치 버그 끝장내기</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>블록 찾기: 전술 기동 온라인</title>
     <style>
-        body { font-family: sans-serif; margin: 0; background: #ddd; display: flex; flex-direction: column; height: 100vh; }
-        .game-container { display: flex; flex: 1; padding: 10px; gap: 10px; }
-        .grid { width: 400px; height: 200px; background: #333; display: grid; grid-template-columns: repeat(20, 1fr); grid-template-rows: repeat(10, 1fr); border: 2px solid #000; }
-        .grid div { border: 1px solid #444; cursor: pointer; }
-        .my-unit { background: #2ecc71 !important; } /* 배치된 블록 */
-        .ghost { background: rgba(46, 204, 113, 0.4) !important; } /* 미리보기 */
-        .inventory { background: #fff; padding: 10px; display: flex; gap: 5px; margin-bottom: 10px; border-radius: 5px; }
-        .unit-btn { padding: 10px; cursor: pointer; font-weight: bold; border: 1px solid #000; }
-        .unit-btn.active { background: #3498db; color: #fff; }
-        .log-area { flex: 1; background: #000; color: #0f0; padding: 10px; overflow-y: auto; font-family: monospace; font-size: 12px; }
-        .ctrl-group { margin-top: 10px; }
+        body { font-family: sans-serif; display: flex; flex-direction: column; height: 100vh; margin: 0; background: #f0f0f0; overflow: hidden; }
+        #login-screen { position: fixed; inset: 0; background: white; display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 1000; }
+        #main-game { display: none; flex: 1; padding: 10px; gap: 15px; overflow-y: auto; }
+        .left-panel { flex: 2; display: flex; flex-direction: column; gap: 5px; }
+        .right-panel { flex: 1; display: flex; flex-direction: column; gap: 10px; min-width: 250px; }
+        .grid { width: 100%; height: 210px; background: #34495e; border: 2px solid #333; display: grid; grid-template-columns: repeat(20, 1fr); grid-template-rows: repeat(10, 1fr); }
+        .grid div { border: 0.1px solid #555; cursor: pointer; box-sizing: border-box; }
+        .my-unit { background: #2ecc71 !important; border: 1px solid #27ae60 !important; }
+        .hit-unit { background: #e74c3c !important; border: 1px solid #c0392b !important; }
+        .miss-cell { background: #95a5a6 !important; }
+        .ghost { background: rgba(46, 204, 113, 0.4); pointer-events: none; }
+        .inventory { display: flex; gap: 5px; flex-wrap: wrap; background: #ddd; padding: 8px; border-radius: 5px; margin-bottom: 5px; min-height: 45px; }
+        .unit-btn { padding: 6px 10px; border: 1px solid #333; cursor: pointer; background: white; font-weight: bold; font-size: 0.85em; }
+        .unit-btn.active { background: #3498db; color: white; border-color: #2980b9; }
+        .ctrl-group { display: flex; gap: 8px; justify-content: center; margin-bottom: 5px; }
+        button { cursor: pointer; border-radius: 4px; border: 1px solid #999; font-weight: bold; }
+        #start-btn { background: #4CAF50; color: white; border: none; font-size: 1.1em; padding: 10px 20px; transition: 0.3s; }
+        .log-area, .chat-area { flex: 1; background: white; border: 1px solid #ccc; overflow-y: auto; padding: 10px; font-size: 0.85em; border-radius: 5px; }
+        .user-list-box { background: #eee; padding: 10px; border-radius: 5px; font-size: 0.9em; display: flex; flex-direction: column; gap: 5px; }
     </style>
 </head>
 <body>
 
-    <div class="inventory" id="inv-ui"></div>
-
-    <div class="game-container">
-        <div style="display:flex; flex-direction:column;">
-            <div id="my-grid" class="grid" onmouseleave="clearGhost()"></div>
-            <div class="ctrl-group">
-                <button onclick="rotateUnit()" style="padding:10px 20px; cursor:pointer;">회전 🔄</button>
-                <button onclick="resetPlacement()" style="padding:10px 20px; cursor:pointer;">초기화 🧹</button>
-            </div>
+    <div id="login-screen">
+        <h1>전술 기동 블록 찾기</h1>
+        <div style="margin-bottom: 10px; display: flex; flex-direction: column; gap: 5px;">
+            <input type="text" id="name-input" placeholder="이름 입력" value="플레이어">
+            <input type="number" id="room-input" placeholder="방 번호" value="1">
         </div>
-        <div class="log-area" id="game-log">
-            <div>[System] 배치를 테스트하세요.</div>
+        <button onclick="joinGame()" style="padding: 12px 30px; background:#2ecc71; color:white; border:none; font-size: 1.1em;">입장하기</button>
+    </div>
+
+    <div id="main-game">
+        <div class="left-panel">
+            <div class="name-label">상대: <span id="opp-name">대기 중</span> <span id="opp-v" style="color:green; display:none; font-weight:bold;">[V]</span></div>
+            <div id="opponent-grid" class="grid"></div>
+            <div id="unit-inventory" class="inventory"></div>
+            <div class="ctrl-group">
+                <button onclick="rotateUnit()" style="padding: 8px 15px; background:#f39c12; color:white; border:none;">회전 🔄</button>
+                <button id="start-btn" onclick="handleButtonClick()">준비하기</button>
+                <button onclick="resetPlacement()" style="padding: 8px 15px; background:#e67e22; color:white; border:none;">초기화 🧹</button>
+            </div>
+            <div class="name-label">나: <span id="my-name-display">-</span> <span id="my-v" style="color:green; display:none; font-weight:bold;">[V]</span></div>
+            <div id="my-grid" class="grid" onmouseleave="clearGhost()"></div>
+        </div>
+        <div class="right-panel">
+            <strong>📊 게임 로그</strong>
+            <div id="game-log" class="log-area"></div>
+            <strong>💬 실시간 채팅</strong>
+            <div id="chat-log" class="chat-area"></div>
+            <div style="display:flex; gap:5px;">
+                <input type="text" id="chat-input" style="flex:1; padding: 5px;" onkeypress="if(event.keyCode==13) sendChat()">
+                <button onclick="sendChat()" style="padding: 5px 15px;">전송</button>
+            </div>
+            <div class="user-list-box">
+                <strong>👥 접속자 명단</strong>
+                <div id="player-list">플레이어: </div>
+                <div id="spectator-list">관전자: </div>
+                <div style="display:flex; gap:5px; margin-top:5px;">
+                    <button onclick="changeRole('player')" style="flex:1; padding:5px;">플레이어로 가기</button>
+                    <button onclick="changeRole('spectator')" style="flex:1; padding:5px;">관전자로 가기</button>
+                </div>
+            </div>
         </div>
     </div>
 
+    <script src="/socket.io/socket.io.js"></script>
     <script>
-        // 1. 데이터 정의 (파트너님의 3x3 이론)
+        const socket = io();
+        let myName = "", myRoom = "", myUnits = [], isMyTurn = false;
+        let gameStatus = "LOBBY", selectedUnitType = null, currentRotation = 0;
+
+        // 테스트에서 성공한 데이터 규격 그대로 사용
         const UNIT_DATA = {
             'ㄷ': [[1,1,0], [1,0,0], [1,1,0]],
             'L': [[1,0,0], [1,0,0], [1,1,0]],
@@ -45,159 +87,170 @@
             '1x2': [[1,1]]
         };
         let inventory = { 'ㄷ':1, 'L':1, 'T':1, 'ㅗ':1, '1x1':1, '1x2':1 };
-        let myUnits = [];
-        let selectedType = null;
-        let currentRotation = 0;
 
-        // 2. 초기화
-        window.onload = () => {
-            const grid = document.getElementById('my-grid');
+        function joinGame() {
+            myName = document.getElementById('name-input').value;
+            myRoom = document.getElementById('room-input').value;
+            document.getElementById('my-name-display').innerText = myName;
+            document.getElementById('login-screen').style.display = 'none';
+            document.getElementById('main-game').style.display = 'flex';
+            socket.emit('joinRoom', { roomCode: myRoom, name: myName });
+            initGrids(); renderInventory();
+            addGameLog("전술 기동 시스템 온라인.");
+        }
+
+        function initGrids() {
+            const oppG = document.getElementById('opponent-grid'), myG = document.getElementById('my-grid');
+            oppG.innerHTML = ''; myG.innerHTML = '';
             for(let i=0; i<200; i++) {
-                const cell = document.createElement('div');
-                cell.onmouseenter = () => showGhost(i);
-                cell.onclick = () => handleCellClick(i);
-                grid.appendChild(cell);
+                const o = document.createElement('div');
+                o.onclick = () => { if(gameStatus === 'PLAYING' && isMyTurn) socket.emit('attack', i); };
+                oppG.appendChild(o);
+                const m = document.createElement('div');
+                m.onmouseenter = () => showGhost(i);
+                m.onclick = () => placeOrPickUnit(i);
+                myG.appendChild(m);
             }
-            renderInventory();
-            console.log("페이지 로드 완료");
-        };
-
-        function addGameLog(msg) {
-            const logBox = document.getElementById('game-log');
-            const div = document.createElement('div');
-            div.innerText = `> ${msg}`;
-            logBox.appendChild(div);
-            logBox.scrollTop = logBox.scrollHeight;
-            console.log("Log:", msg); // 브라우저 콘솔에도 동시 출력
-        }
-
-        function renderInventory() {
-            const ui = document.getElementById('inv-ui');
-            ui.innerHTML = '';
-            for(let t in inventory) {
-                if(inventory[t] > 0) {
-                    const btn = document.createElement('button');
-                    btn.className = 'unit-btn' + (selectedType === t ? ' active' : '');
-                    btn.innerText = `${t} (${inventory[t]})`;
-                    btn.onclick = () => {
-                        selectedType = t;
-                        renderInventory();
-                        addGameLog(`${t} 선택됨`);
-                    };
-                    ui.appendChild(btn);
-                }
-            }
-        }
-
-        // 3. 3x3 회전 및 배치 계산 (핵심 로직)
-        function getCells(type, idx, rotation) {
-            let matrix = UNIT_DATA[type];
-            if(!matrix) return [];
-
-            // 회전
-            let rotated = JSON.parse(JSON.stringify(matrix));
-            const rotCount = (rotation / 90) % 4;
-            for(let i=0; i<rotCount; i++) {
-                const r = rotated.length, c = rotated[0].length;
-                let newMat = Array.from({ length: c }, () => Array(r).fill(0));
-                for(let y=0; y<r; y++) {
-                    for(let x=0; x<c; x++) {
-                        newMat[x][r-1-y] = rotated[y][x];
-                    }
-                }
-                rotated = newMat;
-            }
-
-            // 투영 (클릭한 칸을 상자의 정중앙으로 잡기)
-            const rows = rotated.length;
-            const cols = rotated[0].length;
-            const midR = Math.floor(rows / 2);
-            const midC = Math.floor(cols / 2);
-            const px = idx % 20;
-            const py = Math.floor(idx / 20);
-
-            let results = [];
-            for(let y=0; y<rows; y++) {
-                for(let x=0; x<cols; x++) {
-                    if(rotated[y][x] === 1) { // 1인 부분만 땅을 차지
-                        let fx = px + (x - midC);
-                        let fy = py + (y - midR);
-                        if(fx < 0 || fx >= 20 || fy < 0 || fy >= 10) results.push(-1);
-                        else results.push(fy * 20 + fx);
-                    }
-                }
-            }
-            return results;
-        }
-
-        function handleCellClick(idx) {
-            addGameLog(`칸 클릭: ${idx}`);
-            
-            // 유닛 회수 (이미 있으면 빼기)
-            const uIdx = myUnits.findIndex(u => u.cells.includes(idx));
-            if(uIdx !== -1) {
-                const u = myUnits.splice(uIdx, 1)[0];
-                inventory[u.type]++;
-                selectedType = u.type;
-                renderInventory();
-                renderGrid();
-                addGameLog(`${u.type} 회수됨`);
-                return;
-            }
-
-            if(!selectedType) return addGameLog("유닛을 먼저 선택하세요!");
-
-            const cells = getCells(selectedType, idx, currentRotation);
-            addGameLog(`계산 좌표: ${JSON.stringify(cells)}`);
-
-            if(cells.includes(-1)) return addGameLog("실패: 격자 밖입니다.");
-            if(cells.some(c => myUnits.some(u => u.cells.includes(c)))) return addGameLog("실패: 겹칩니다.");
-
-            // 배치 성공
-            myUnits.push({ type: selectedType, cells: cells });
-            inventory[selectedType]--;
-            if(inventory[selectedType] <= 0) selectedType = null;
-            
-            renderInventory();
-            renderGrid();
-            addGameLog("배치 성공!");
-        }
-
-        function renderGrid() {
-            const divs = document.getElementById('my-grid').children;
-            for(let i=0; i<200; i++) divs[i].className = '';
-            myUnits.forEach(u => {
-                u.cells.forEach(c => divs[c].classList.add('my-unit'));
-            });
-        }
-
-        function showGhost(idx) {
-            clearGhost();
-            if(!selectedType) return;
-            const cells = getCells(selectedType, idx, currentRotation);
-            const divs = document.getElementById('my-grid').children;
-            cells.forEach(c => {
-                if(c !== -1) divs[c].classList.add('ghost');
-            });
-        }
-
-        function clearGhost() {
-            document.querySelectorAll('.ghost').forEach(g => g.classList.remove('ghost'));
         }
 
         function rotateUnit() {
             currentRotation = (currentRotation + 90) % 360;
-            addGameLog(`회전: ${currentRotation}도`);
+            addGameLog("[알림] 회전: " + currentRotation + "도");
+            if(selectedUnitType) showGhost(lastHoverIdx);
         }
 
-        function resetPlacement() {
-            myUnits = [];
-            inventory = { 'ㄷ':1, 'L':1, 'T':1, 'ㅗ':1, '1x1':1, '1x2':1 };
-            selectedType = null;
-            renderInventory();
-            renderGrid();
-            addGameLog("초기화 완료");
+        // 테스트에서 성공한 "중심점 투영" 로직
+        function getCells(type, pivotIdx, rotation) {
+            let matrix = UNIT_DATA[type];
+            if(!matrix) return [];
+
+            let rotated = JSON.parse(JSON.stringify(matrix));
+            const times = (rotation / 90) % 4;
+            for(let t=0; t<times; t++) {
+                const r = rotated.length, c = rotated[0].length;
+                let newMat = Array.from({ length: c }, () => Array(r).fill(0));
+                for(let i=0; i<r; i++) { for(let j=0; j<c; j++) { newMat[j][r-1-i] = rotated[i][j]; } }
+                rotated = newMat;
+            }
+
+            const rows = rotated.length, cols = rotated[0].length;
+            const midR = Math.floor(rows / 2), midC = Math.floor(cols / 2);
+            const px = pivotIdx % 20, py = Math.floor(pivotIdx / 20);
+            
+            let resultCells = [];
+            for(let r=0; r<rows; r++) {
+                for(let c=0; c<cols; c++) {
+                    if(rotated[r][c] === 1) {
+                        let fx = px + (c - midC), fy = py + (r - midR);
+                        if(fx < 0 || fx >= 20 || fy < 0 || fy >= 10) resultCells.push(-1);
+                        else resultCells.push(fy * 20 + fx);
+                    }
+                }
+            }
+            return resultCells;
         }
+
+        function placeOrPickUnit(idx) {
+            // 문지기(gameStatus) 검사를 제거하여 배치 자유도 보장
+            const uIdx = myUnits.findIndex(u => u.cells.includes(idx));
+            if (uIdx !== -1) {
+                const u = myUnits.splice(uIdx, 1)[0];
+                inventory[u.type]++;
+                selectedUnitType = u.type; renderInventory(); renderMyGrid();
+                addGameLog(`[회수] ${u.type} 블록`);
+                return;
+            }
+
+            if(!selectedUnitType || inventory[selectedUnitType] <= 0) return;
+
+            const cells = getCells(selectedUnitType, idx, currentRotation);
+            if(cells.includes(-1) || cells.some(c => myUnits.some(u => u.cells.includes(c)))) {
+                addGameLog("[실패] 배치 불가");
+                return;
+            }
+
+            myUnits.push({ type: selectedUnitType, cells: cells });
+            inventory[selectedUnitType]--;
+            if(inventory[selectedUnitType] <= 0) selectedUnitType = null;
+            renderInventory(); renderMyGrid();
+            addGameLog(`[성공] ${cells.length}칸 점유됨`);
+        }
+
+        function renderMyGrid() {
+            const divs = document.getElementById('my-grid').children;
+            for(let i=0; i<200; i++) { divs[i].className = ''; divs[i].style.opacity = "1"; }
+            myUnits.forEach(u => { u.cells.forEach(c => divs[c].classList.add('my-unit')); });
+        }
+
+        let lastHoverIdx = -1;
+        function showGhost(idx) {
+            if(idx !== -1) lastHoverIdx = idx;
+            else idx = lastHoverIdx;
+            clearGhost(); if(!selectedUnitType || idx === -1) return;
+            const cells = getCells(selectedUnitType, idx, currentRotation);
+            const myG = document.getElementById('my-grid');
+            cells.forEach(c => { if(c !== -1) myG.children[c].classList.add('ghost'); });
+        }
+
+        function clearGhost() { document.querySelectorAll('.ghost').forEach(g => g.classList.remove('ghost')); }
+
+        function renderInventory() {
+            const inv = document.getElementById('unit-inventory'); inv.innerHTML = '';
+            for(let t in inventory) {
+                if(inventory[t] > 0) {
+                    const b = document.createElement('button');
+                    b.className = 'unit-btn' + (selectedUnitType === t ? ' active' : '');
+                    b.innerText = `${t}(${inventory[t]})`;
+                    b.onclick = () => { selectedUnitType = t; renderInventory(); };
+                    inv.appendChild(b);
+                }
+            }
+        }
+
+        function handleButtonClick() {
+            const btn = document.getElementById('start-btn'), txt = btn.innerText;
+            if (txt === "게임 시작하기!") socket.emit('startGame');
+            else if (txt === "준비하기" || txt === "준비 취소") socket.emit('toggleReady');
+            else if (gameStatus === "PLACING" || gameStatus === "MOVING") {
+                if (Object.values(inventory).some(v => v > 0)) return alert("모든 유닛 배치 필수!");
+                btn.disabled = true; btn.innerText = "대기 중...";
+                socket.emit('finishPlacing', myUnits);
+            }
+        }
+
+        socket.on('roomData', data => {
+            const me = data.players.find(p => p.id === socket.id), opp = data.players.find(p => p.id !== socket.id);
+            gameStatus = data.gameState;
+            document.getElementById('my-v').style.display = (me && me.isReady) ? 'inline' : 'none';
+            if (opp) { document.getElementById('opp-name').innerText = opp.name; document.getElementById('opp-v').style.display = opp.isReady ? 'inline' : 'none'; }
+            if (data.gameState === 'LOBBY') {
+                const btn = document.getElementById('start-btn'); btn.disabled = false;
+                if (data.players.length === 2 && data.players.every(p => p.isReady)) { btn.innerText = "게임 시작하기!"; btn.style.background = "#FF9800"; }
+                else { btn.innerText = (me && me.isReady) ? "준비 취소" : "준비하기"; btn.style.background = "#4CAF50"; }
+            }
+            document.getElementById('player-list').innerText = "플레이어: " + data.players.map(p => p.name).join(', ');
+            document.getElementById('spectator-list').innerText = "관전자: " + data.spectators.map(s => s.name).join(', ');
+        });
+
+        socket.on('startPlacing', () => { gameStatus = "PLACING"; const b = document.getElementById('start-btn'); b.innerText = "배치 확정"; b.style.background = "#2ecc71"; });
+        socket.on('gameStart', d => { gameStatus = "PLAYING"; updateTurn(d.turn); });
+        socket.on('attackResult', d => {
+            const g = (d.attacker === socket.id) ? document.getElementById('opponent-grid') : document.getElementById('my-grid');
+            g.children[d.index].classList.add(d.hit ? 'hit-unit' : 'miss-cell');
+            if(!d.hit) updateTurn(d.nextTurn);
+        });
+
+        function updateTurn(turnId) {
+            isMyTurn = (socket.id === turnId);
+            const b = document.getElementById('start-btn');
+            b.innerText = isMyTurn ? "🔥 나의 턴" : "⏳ 상대 턴";
+            b.style.background = isMyTurn ? "#e74c3c" : "#34495e";
+        }
+
+        function sendChat() { const i = document.getElementById('chat-input'); if(i.value) socket.emit('sendChat', i.value); i.value = ""; }
+        socket.on('receiveChat', d => { document.getElementById('chat-log').innerHTML += `<div><b>${d.name}:</b> ${d.msg}</div>`; });
+        function addGameLog(m) { const l = document.getElementById('game-log'); l.innerHTML += `<div>${m}</div>`; l.scrollTop = l.scrollHeight; }
+        function resetPlacement() { myUnits = []; inventory = { 'ㄷ':1, 'L':1, 'T':1, 'ㅗ':1, '1x1':1, '1x2':1 }; renderInventory(); renderMyGrid(); }
     </script>
 </body>
 </html>
