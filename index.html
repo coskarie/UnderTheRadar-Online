@@ -79,13 +79,13 @@
         let myName = "", myRoom = "", myUnits = [], isMyTurn = false;
         let gameStatus = "LOBBY", selectedUnitType = null, currentRotation = 0;
 
-        /* [핵심] 파트너님의 이론대로 0은 무시하고 1만 계산하는 3x3 매트릭스 정의 */
+        /* [수정] 파트너님이 제안하신 3x3 행렬 데이터 */
         const UNIT_DATA = {
             'ㄷ': [[1,1,0], [1,0,0], [1,1,0]],
             'L': [[1,0,0], [1,0,0], [1,1,0]],
             'T': [[1,1,1], [0,1,0], [0,0,0]],
-            'ㅗ': [[0,0,0], [0,1,0], [1,1,1]], // 파트너님이 제안하신 ㅗ 블록 형태
-            'I': [[0,0,1,0], [0,0,1,0], [0,0,1,0], [0,0,1,0]], // I는 4x4
+            'ㅗ': [[0,1,0], [1,1,1], [0,0,0]],
+            'I': [[1], [1], [1], [1]], 
             '1x1': [[1]],
             '1x2': [[1,1]]
         };
@@ -119,20 +119,17 @@
         function rotateUnit() {
             currentRotation = (currentRotation + 90) % 360;
             addGameLog("[알림] 회전: " + currentRotation + "도");
-            if (selectedUnitType) showGhost(-1); // 고스트 즉시 갱신
+            if (selectedUnitType) showGhost(-1); 
         }
 
-        /* [핵심 알고리즘] 0은 무시하고 1만 격자에 투영하는 함수 */
+        /* [수정 핵심] 클릭 지점이 무조건 행렬의 첫 번째 '1'에 오도록 좌표 계산 */
         function getRotatedCells(type, pivotIdx, rotation) {
-            if (!type) return [];
-            // 한글 인코딩 문제 해결을 위한 정규화 매칭
             const normalizedType = type.normalize('NFC');
             let matrix = null;
             for(let key in UNIT_DATA) { if(key.normalize('NFC') === normalizedType) { matrix = UNIT_DATA[key]; break; } }
             if(!matrix) return [];
 
-            // 행렬 회전 (90, 180, 270)
-            let rotated = JSON.parse(JSON.stringify(matrix));
+            let rotated = matrix;
             const times = (rotation / 90) % 4;
             for(let t=0; t<times; t++) {
                 const rows = rotated.length, cols = rotated[0].length;
@@ -141,16 +138,21 @@
                 rotated = newMat;
             }
 
-            // 격자 좌표 계산 (마우스 클릭 지점이 상자의 정중앙)
-            const rows = rotated.length, cols = rotated[0].length;
-            const midR = Math.floor(rows / 2), midC = Math.floor(cols / 2);
+            // 회전된 행렬에서 '첫 번째 1'의 위치를 찾음 (앵커 포인트)
+            let anchorR = -1, anchorC = -1;
+            for(let r=0; r<rotated.length; r++) {
+                for(let c=0; c<rotated[0].length; c++) {
+                    if(rotated[r][c] === 1) { anchorR = r; anchorC = c; break; }
+                }
+                if(anchorR !== -1) break;
+            }
+
             const px = pivotIdx % 20, py = Math.floor(pivotIdx / 20);
-            
             let resultCells = [];
-            for(let r=0; r<rows; r++) {
-                for(let c=0; c<cols; c++) {
-                    if(rotated[r][c] === 1) { // 파트너님 말씀대로 1인 경우만 점유!
-                        let fx = px + (c - midC), fy = py + (r - midR);
+            for(let r=0; r<rotated.length; r++) {
+                for(let c=0; c<rotated[0].length; c++) {
+                    if(rotated[r][c] === 1) {
+                        let fx = px + (c - anchorC), fy = py + (r - anchorR);
                         if(fx < 0 || fx >= 20 || fy < 0 || fy >= 10) resultCells.push(-1);
                         else resultCells.push(fy * 20 + fx);
                     }
@@ -171,9 +173,7 @@
             }
             if(!selectedUnitType || inventory[selectedUnitType] <= 0) return;
             const cells = getRotatedCells(selectedUnitType, idx, currentRotation);
-            if(cells.includes(-1) || cells.some(c => myUnits.some(u => u.cells.includes(c)))) {
-                return addGameLog("[오류] 격자 범위를 벗어납니다.");
-            }
+            if(cells.includes(-1) || cells.some(c => myUnits.some(u => u.cells.includes(c)))) return;
             myUnits.push({ type: selectedUnitType, cells: cells, isHit: false });
             inventory[selectedUnitType]--;
             if(inventory[selectedUnitType] <= 0) selectedUnitType = null;
@@ -230,7 +230,6 @@
             document.getElementById('my-v').style.display = (me && me.isReady) ? 'inline' : 'none';
             if (opp) { document.getElementById('opp-name').innerText = opp.name; document.getElementById('opp-v').style.display = opp.isReady ? 'inline' : 'none'; }
             else { document.getElementById('opp-name').innerText = "대기 중"; document.getElementById('opp-v').style.display = 'none'; }
-
             if (data.gameState === 'LOBBY') {
                 const btn = document.getElementById('start-btn'); btn.disabled = false;
                 if (data.players.length === 2 && data.players.every(p => p.isReady)) { btn.innerText = "게임 시작하기!"; btn.style.background = "#FF9800"; }
@@ -247,7 +246,6 @@
             const g = (d.attacker === socket.id) ? document.getElementById('opponent-grid') : document.getElementById('my-grid');
             g.children[d.index].classList.add(d.hit ? 'hit-unit' : 'miss-cell');
             if(!d.hit) updateTurn(d.nextTurn);
-            addGameLog(`${d.attacker === socket.id ? "나" : "상대"}의 공격: ${d.hit ? "적중!" : "불발"}`);
         });
 
         function updateTurn(turnId) {
