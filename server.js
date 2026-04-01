@@ -93,10 +93,13 @@ io.on('connection', (socket) => {
         }
     });
 
-    // 5. 배치 및 전술 기동 확정 로직
+    // 5. 배치 및 전술 기동 확정 로직 (🚨 백엔드 자물쇠 추가됨)
     socket.on('finishPlacing', (units) => {
         const room = rooms[currentRoom];
-        if (!room) return;
+        
+        // 🔒 배치나 이동 단계가 아닐 때 억지로 신호를 보내면 차단!
+        if (!room || (room.gameState !== 'PLACING' && room.gameState !== 'MOVING')) return;
+        
         const player = room.players.find(p => p.id === socket.id);
         
         if (player) {
@@ -186,10 +189,31 @@ io.on('connection', (socket) => {
         if (currentRoom) io.to(currentRoom).emit('receiveChat', { name: userName, msg });
     });
 
+    // 8. 접속 종료 로직 (🚨 탈주 닌자 방어선 추가됨)
     socket.on('disconnect', () => {
         if (currentRoom && rooms[currentRoom]) {
-            rooms[currentRoom].players = rooms[currentRoom].players.filter(p => p.id !== socket.id);
-            rooms[currentRoom].spectators = rooms[currentRoom].spectators.filter(s => s.id !== socket.id);
+            const room = rooms[currentRoom];
+            const wasPlayer = room.players.some(p => p.id === socket.id);
+            
+            // 명단에서 지우기
+            room.players = room.players.filter(p => p.id !== socket.id);
+            room.spectators = room.spectators.filter(s => s.id !== socket.id);
+            
+            // 🔒 게임 도중에 플레이어가 나갔다면 방을 강제 초기화
+            if (wasPlayer && (room.gameState === 'PLAYING' || room.gameState === 'PLACING' || room.gameState === 'MOVING')) {
+                room.gameState = 'LOBBY';
+                room.phraseCount = 0;
+                room.turn = null;
+                room.players.forEach(p => { 
+                    p.isReady = false; 
+                    p.placed = false; 
+                    p.units = []; 
+                });
+                
+                io.to(currentRoom).emit('systemMsg', "🚨 상대방의 연결이 끊겨 게임이 로비로 초기화되었습니다.");
+                io.to(currentRoom).emit('rematchStarted'); // 클라이언트 화면 새로고침 명령
+            }
+            
             updateRoomInfo(currentRoom);
         }
     });
