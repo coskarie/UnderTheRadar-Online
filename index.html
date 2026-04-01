@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>블록 찾기: 전술 기동 온라인 (잠금 해제)</title>
+    <title>블록 찾기: 전술 기동 온라인</title>
     <style>
         body { font-family: sans-serif; display: flex; flex-direction: column; height: 100vh; margin: 0; background: #f0f0f0; overflow: hidden; }
         #login-screen { position: fixed; inset: 0; background: white; display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 1000; }
@@ -24,7 +24,9 @@
         .my-unit { background: #2ecc71 !important; border: 1px solid #27ae60 !important; }
         .hit-unit { background: #e74c3c !important; border: 1px solid #c0392b !important; }
         .miss-cell { background: #95a5a6 !important; }
-        .ghost { background: rgba(46, 204, 113, 0.4); }
+        
+        /* 🚨 문제의 pointer-events: none; 삭제 완료 🚨 */
+        .ghost { background: rgba(46, 204, 113, 0.4); } 
         .ghost-invalid { background: rgba(231, 76, 60, 0.4); }
 
         .inventory { display: flex; gap: 5px; flex-wrap: wrap; background: #ddd; padding: 8px; border-radius: 5px; margin-bottom: 5px; min-height: 45px; }
@@ -98,9 +100,10 @@
         const socket = (typeof io !== 'undefined') ? io() : { emit: ()=>{}, on: ()=>{} };
         let myName = "", myRoom = "", myUnits = [], isMyTurn = false;
         
-        // 🚨 핵심: 처음부터 배치 가능하도록 잠금 해제, 'ㄷ' 기본 선택 🚨
+        // 🔒 파트너님 조건: 시작 상태는 무조건 로비, 선택 유닛 없음, 플레이어 아님으로 시작
         let gameStatus = "LOBBY"; 
-        let selectedUnitType = 'ㄷ'; 
+        let selectedUnitType = null; 
+        let isPlayer = false; // 내가 플레이어인지 관전자인지 판별
 
         const UNIT_SHAPES = {
             'ㄷ': [[0,0],[0,1],[0,2],[1,1]],
@@ -124,7 +127,6 @@
             socket.emit('joinRoom', { roomCode: myRoom, name: myName });
             renderInventory();
             initGrids();
-            addGameLog("[시스템] 잠금 해제됨. 바로 유닛을 배치해보세요.");
         }
 
         function initGrids() {
@@ -165,8 +167,17 @@
         }
 
         function placeOrPickUnit(idx) {
-            // 🚨 차단 코드 완전 삭제: 언제든 클릭 가능 🚨
-            
+            // 🔒 [조건 1, 2 완벽 적용] 파이썬 스타일 입구컷 방어선
+            if (!isPlayer) {
+                addGameLog("[차단] 관전자는 유닛을 배치할 수 없습니다.");
+                return;
+            }
+            if (gameStatus !== 'PLACING') {
+                addGameLog("[차단] 아직 배치 단계가 아닙니다.");
+                return;
+            }
+
+            // --- 통과 시 로직 ---
             const unitIdx = myUnits.findIndex(u => u.cells.includes(idx));
             if (unitIdx !== -1) {
                 const unit = myUnits[unitIdx];
@@ -186,14 +197,8 @@
 
             const cells = getPlacementCells(selectedUnitType, idx);
 
-            if(cells.includes(-1)) {
-                addGameLog("[차단] 격자 밖으로 벗어납니다.");
-                return;
-            }
-            if(cells.some(c => myUnits.some(u => u.cells.includes(c)))) {
-                addGameLog("[차단] 다른 유닛과 겹칩니다.");
-                return;
-            }
+            if(cells.includes(-1)) return;
+            if(cells.some(c => myUnits.some(u => u.cells.includes(c)))) return;
 
             myUnits.push({ type: selectedUnitType, cells: cells, isHit: false });
             inventory[selectedUnitType]--;
@@ -206,9 +211,7 @@
 
             const remaining = Object.entries(inventory).filter(([,v]) => v > 0);
             if(remaining.length === 0) {
-                addGameLog("[성공] 모든 유닛 배치 완료! '준비하기' 또는 '배치 확정' 버튼을 누르세요.");
-            } else {
-                addGameLog("[성공] " + selectedUnitType + " 배치 완료.");
+                addGameLog("[성공] 모든 유닛 배치 완료! '배치 확정' 버튼을 누르세요.");
             }
         }
 
@@ -230,8 +233,9 @@
 
         function showGhost(idx) {
             clearGhost();
-            if(!selectedUnitType) return;
-            // 🚨 미리보기도 차단 코드 완전 삭제 🚨
+            
+            // 🔒 [조건 1, 2 완벽 적용] 플레이어가 아니거나 배치가 아니면 유령(미리보기) 차단
+            if (!isPlayer || gameStatus !== 'PLACING' || !selectedUnitType) return;
             
             const cells = getPlacementCells(selectedUnitType, idx);
             const myG = document.getElementById('my-grid');
@@ -264,6 +268,7 @@
         }
 
         function resetPlacement() {
+            if(gameStatus !== 'PLACING') return; // 배치 상태 아닐때 초기화 막기
             myUnits.forEach(u => { if(!u.isHit) inventory[u.type]++; });
             myUnits = myUnits.filter(u => u.isHit);
             selectedUnitType = Object.keys(inventory).find(t => inventory[t] > 0) || null;
@@ -296,6 +301,8 @@
             const opp = data.players.find(p => p.id !== socket.id);
             const btn = document.getElementById('start-btn');
 
+            // 🔒 내가 플레이어인지 관전자인지 판별하여 변수에 저장
+            isPlayer = !!me; 
             gameStatus = data.gameState;
 
             document.getElementById('my-v').style.display = (me && me.isReady) ? 'inline' : 'none';
@@ -323,7 +330,6 @@
 
         socket.on('startPlacing', () => {
             gameStatus = "PLACING";
-            // 이미 방장이 로비에서 배치해둔게 있다면 초기화 안함
             if (myUnits.length === 0) {
                 inventory = { 'ㄷ':1, 'L':1, 'T':1, 'ㅗ':1, 'I':1, '1x1':1, '1x2':1 };
                 selectedUnitType = Object.keys(inventory)[0];
