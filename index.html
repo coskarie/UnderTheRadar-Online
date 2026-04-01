@@ -25,8 +25,10 @@
         .hit-unit { background: #e74c3c !important; border: 1px solid #c0392b !important; }
         .miss-cell { background: #95a5a6 !important; }
         
-        /* 🚨 문제의 pointer-events: none; 삭제 완료 🚨 */
+        /* 🚨 시각적 마스터키 CSS 완벽 구현 🚨 */
         .ghost { background: rgba(46, 204, 113, 0.4); } 
+        .ghost-purple { background: rgba(155, 89, 182, 0.6); } /* 움직이는 보라색 유닛 */
+        .ghost-original { background: rgba(255, 255, 255, 0.6); border: 2px dashed #ecf0f1 !important; } /* 제자리 흰색 껍데기 */
         .ghost-invalid { background: rgba(231, 76, 60, 0.4); }
 
         .inventory { display: flex; gap: 5px; flex-wrap: wrap; background: #ddd; padding: 8px; border-radius: 5px; margin-bottom: 5px; min-height: 45px; }
@@ -100,10 +102,12 @@
         const socket = (typeof io !== 'undefined') ? io() : { emit: ()=>{}, on: ()=>{} };
         let myName = "", myRoom = "", myUnits = [], isMyTurn = false;
         
-        // 🔒 파트너님 조건: 시작 상태는 무조건 로비, 선택 유닛 없음, 플레이어 아님으로 시작
         let gameStatus = "LOBBY"; 
         let selectedUnitType = null; 
-        let isPlayer = false; // 내가 플레이어인지 관전자인지 판별
+        let isPlayer = false; 
+
+        // 🚨 1번 규칙: 기동 단계에서 원래 위치를 저장할 변수 
+        let movingOriginalState = null; 
 
         const UNIT_SHAPES = {
             'ㄷ': [[0,0], [1,0], [0,1], [0,2], [1,2]],
@@ -167,33 +171,45 @@
         }
 
         function placeOrPickUnit(idx) {
-            // 🔒 [조건 1, 2 완벽 적용] 파이썬 스타일 입구컷 방어선
             if (!isPlayer) {
-                addGameLog("[차단] 관전자는 유닛을 배치할 수 없습니다.");
-                return;
+                addGameLog("[차단] 관전자는 유닛을 배치할 수 없습니다."); return;
             }
-            // 🚨 수정: PLACING(배치)이거나 MOVING(기동)일 때는 통과!
             if (gameStatus !== 'PLACING' && gameStatus !== 'MOVING') {
-                addGameLog("[차단] 지금은 유닛을 움직일 수 있는 단계가 아닙니다.");
-                return;
+                addGameLog("[차단] 지금은 유닛을 움직일 수 있는 단계가 아닙니다."); return;
             }
 
-            // --- 통과 시 로직 ---
+            // [클릭 시나리오 1: 이미 배치된 유닛을 다시 집어드는 경우]
             const unitIdx = myUnits.findIndex(u => u.cells.includes(idx));
             if (unitIdx !== -1) {
                 const unit = myUnits[unitIdx];
                 if (unit.isHit) return alert("이미 피격된 유닛은 이동할 수 없습니다!");
+
+                // 🚨 2번 규칙: 하나만 옮겼는지 판별하는 자물쇠 검사
+                if (gameStatus === 'MOVING') {
+                    // 이미 다른 놈을 움직였는데(movingOriginalState 존재), 그놈이 아닌 다른 유닛을 클릭한 경우
+                    if (movingOriginalState !== null && !unit.isMoved) {
+                        addGameLog("[차단] 1개의 유닛만 기동할 수 있습니다. 원래 자리(흰색)로 되돌리면 취소됩니다.");
+                        return;
+                    }
+                    // 처음으로 유닛을 집어드는 경우: 원본 위치 스냅샷 저장!
+                    if (movingOriginalState === null) {
+                        movingOriginalState = { type: unit.type, cells: [...unit.cells] };
+                    }
+                }
+
                 myUnits.splice(unitIdx, 1);
                 selectedUnitType = unit.type;
                 inventory[unit.type]++;
                 renderInventory(); renderMyGrid();
-                addGameLog("[알림] 유닛 회수: " + unit.type);
+                
+                if (gameStatus === 'MOVING') addGameLog("[알림] 기동 유닛 선택 완료. 재배치할 곳을 클릭하세요.");
+                else addGameLog("[알림] 유닛 회수: " + unit.type);
                 return;
             }
 
+            // [클릭 시나리오 2: 선택한 유닛을 바닥에 내려놓는 경우]
             if(!selectedUnitType) {
-                addGameLog("[알림] 먼저 유닛 모양을 선택하세요!");
-                return;
+                addGameLog("[알림] 먼저 유닛 모양을 선택하세요!"); return;
             }
 
             const cells = getPlacementCells(selectedUnitType, idx);
@@ -201,19 +217,44 @@
             if(cells.includes(-1)) return;
             if(cells.some(c => myUnits.some(u => u.cells.includes(c)))) return;
 
-            myUnits.push({ type: selectedUnitType, cells: cells, isHit: false });
+            // 🚨 4번 규칙 (UNDO 마법): 놓으려는 위치가 스냅샷(흰색 껍데기)과 완전히 일치하는지 파이썬처럼 리스트 비교
+            let isOriginalPos = false;
+            if (gameStatus === 'MOVING' && movingOriginalState) {
+                const sortedCells = [...cells].sort((a,b)=>a-b);
+                const sortedOriginal = [...movingOriginalState.cells].sort((a,b)=>a-b);
+                isOriginalPos = sortedCells.length === sortedOriginal.length && 
+                                sortedCells.every((v, i) => v === sortedOriginal[i]); 
+            }
+
+            myUnits.push({ 
+                type: selectedUnitType, 
+                cells: cells, 
+                isHit: false, 
+                isMoved: (gameStatus === 'MOVING' && !isOriginalPos) // 제자리가 아니면 이동된 유닛으로 낙인!
+            });
+            
             inventory[selectedUnitType]--;
 
-            if(inventory[selectedUnitType] <= 0) {
-                selectedUnitType = Object.keys(inventory).find(t => inventory[t] > 0) || null;
+            if (gameStatus === 'MOVING') {
+                selectedUnitType = null; // 기동 중엔 인벤토리 안 봐도 되도록 자동 선택해제
+                if (isOriginalPos) {
+                    movingOriginalState = null; // 롤백(Undo) 발동! 자물쇠 완전히 품
+                    myUnits[myUnits.length - 1].isMoved = false;
+                    addGameLog("[알림] 원위치 복귀 (실행 취소). 다시 다른 유닛을 선택할 수 있습니다!");
+                } else {
+                    addGameLog("[알림] 기동 위치 지정 완료. 다시 클릭해 수정하거나 기동 확정을 누르세요.");
+                }
+            } else {
+                if(inventory[selectedUnitType] <= 0) {
+                    selectedUnitType = Object.keys(inventory).find(t => inventory[t] > 0) || null;
+                }
+                const remaining = Object.entries(inventory).filter(([,v]) => v > 0);
+                if(remaining.length === 0) {
+                    addGameLog("[성공] 모든 유닛 배치 완료! 확정 버튼을 누르세요.");
+                }
             }
 
             renderInventory(); renderMyGrid();
-
-            const remaining = Object.entries(inventory).filter(([,v]) => v > 0);
-            if(remaining.length === 0) {
-                addGameLog("[성공] 모든 유닛 배치 완료! 확정 버튼을 누르세요.");
-            }
         }
 
         function renderMyGrid() {
@@ -222,6 +263,14 @@
                 cells[i].className = '';
                 cells[i].style.opacity = "1";
             }
+            
+            // 🚨 3번 규칙: 원래 자리(스냅샷)가 남아있다면 흰색 껍데기를 먼저 바닥에 그려줌
+            if (gameStatus === 'MOVING' && movingOriginalState) {
+                movingOriginalState.cells.forEach(c => {
+                    if(c >= 0 && c < 200) cells[c].classList.add('ghost-original');
+                });
+            }
+
             myUnits.forEach(u => {
                 u.cells.forEach(c => {
                     if(c < 0 || c >= 200) return;
@@ -235,23 +284,28 @@
         function showGhost(idx) {
             clearGhost();
             
-            // 🚨 수정: MOVING 단계에서도 미리보기가 작동하도록 조건 추가
             if (!isPlayer || (gameStatus !== 'PLACING' && gameStatus !== 'MOVING') || !selectedUnitType) return;
             
             const cells = getPlacementCells(selectedUnitType, idx);
             const myG = document.getElementById('my-grid');
             const invalid = cells.includes(-1) || cells.some(c => myUnits.some(u => u.cells.includes(c)));
             
+            // 🚨 3번 규칙: MOVING 단계면 마스터키(보라색)로 시각적 피드백 제공
+            const ghostClass = (gameStatus === 'MOVING') ? 'ghost-purple' : 'ghost';
+
             cells.forEach(c => { 
                 if(c >= 0 && c < 200) {
-                    myG.children[c].classList.add('ghost');
+                    myG.children[c].classList.add(ghostClass);
                     if(invalid) myG.children[c].classList.add('ghost-invalid');
                 }
             });
         }
 
         function clearGhost() { 
-            document.querySelectorAll('.ghost').forEach(g => g.classList.remove('ghost', 'ghost-invalid')); 
+            // 흰색 껍데기는 지우면 안 되므로 제외하고 싹 지움
+            document.querySelectorAll('.ghost, .ghost-purple, .ghost-invalid').forEach(g => {
+                g.classList.remove('ghost', 'ghost-purple', 'ghost-invalid');
+            }); 
         }
 
         function renderInventory() {
@@ -269,8 +323,22 @@
         }
 
         function resetPlacement() {
-            // 🚨 수정: MOVING 상태일 때도 초기화 허용
-            if(gameStatus !== 'PLACING' && gameStatus !== 'MOVING') return; 
+            // MOVING 단계일 때도 쓰레기통(초기화) 버튼을 누르면 원위치(Undo) 시켜주는 디테일 추가
+            if(gameStatus === 'MOVING') {
+                if (movingOriginalState) {
+                    let movedUnitIdx = myUnits.findIndex(u => u.isMoved);
+                    if (movedUnitIdx !== -1) myUnits.splice(movedUnitIdx, 1);
+                    else if (selectedUnitType) { inventory[selectedUnitType]--; selectedUnitType = null; }
+                    
+                    myUnits.push({ type: movingOriginalState.type, cells: [...movingOriginalState.cells], isHit: false, isMoved: false });
+                    movingOriginalState = null;
+                    renderInventory(); renderMyGrid();
+                    addGameLog("[알림] 기동이 빗자루 버튼으로 취소되었습니다. 다시 선택하세요.");
+                }
+                return;
+            }
+
+            if(gameStatus !== 'PLACING') return; 
             
             myUnits.forEach(u => { if(!u.isHit) inventory[u.type]++; });
             myUnits = myUnits.filter(u => u.isHit);
@@ -288,9 +356,13 @@
             } else if (txt === "준비하기" || txt === "준비 취소") {
                 socket.emit('toggleReady');
             } else if (txt === "배치 확정" || txt === "기동 확정") {
-                if (Object.values(inventory).some(v => v > 0)) {
+                if (gameStatus === 'PLACING' && Object.values(inventory).some(v => v > 0)) {
                     return alert("모든 유닛을 배치해야 합니다!\n남은 유닛: " +
                         Object.entries(inventory).filter(([,v])=>v>0).map(([k,v])=>`${k}(${v}개)`).join(', '));
+                }
+                // 들고만 있고 내려놓지 않은 상태 방지
+                if (gameStatus === 'MOVING' && selectedUnitType) {
+                    return alert("기동 중인 유닛을 바닥에 내려놓아야 확정할 수 있습니다!");
                 }
                 btn.disabled = true; btn.innerText = "상대 대기 중...";
                 socket.emit('finishPlacing', myUnits);
@@ -304,7 +376,6 @@
             const opp = data.players.find(p => p.id !== socket.id);
             const btn = document.getElementById('start-btn');
 
-            // 🔒 내가 플레이어인지 관전자인지 판별하여 변수에 저장
             isPlayer = !!me; 
             gameStatus = data.gameState;
 
@@ -333,6 +404,7 @@
 
         socket.on('startPlacing', () => {
             gameStatus = "PLACING";
+            movingOriginalState = null;
             if (myUnits.length === 0) {
                 inventory = { 'ㄷ':1, 'L':1, 'T':1, 'ㅗ':1, 'I':1, '1x1':1, '1x2':1 };
                 selectedUnitType = Object.keys(inventory)[0];
@@ -344,9 +416,13 @@
 
         socket.on('startMoving', () => {
             gameStatus = "MOVING";
+            movingOriginalState = null; // 기동 초기화
+            selectedUnitType = null;
+            myUnits.forEach(u => u.isMoved = false); // 이전에 기동했던 꼬리표 초기화
+            
             const btn = document.getElementById('start-btn');
             btn.innerText = "기동 확정"; btn.style.background = "#9b59b6"; btn.disabled = false;
-            addGameLog("[시스템] 전술 기동 단계입니다.");
+            addGameLog("[시스템] 전술 기동 단계입니다. 1개의 유닛만 재배치할 수 있습니다.");
         });
 
         socket.on('gameStart', data => {
@@ -360,7 +436,6 @@
             grid.children[data.index].classList.add(data.hit ? 'hit-unit' : 'miss-cell');
             if(!data.hit) updateTurn(data.nextTurn);
             
-            // 🚨 [추가된 핵심 로직] 상대가 내 격자를 맞췄을 때, 내 브라우저도 데미지를 기억하게 함!
             if (data.attacker !== socket.id && data.hit) {
                 myUnits.forEach(u => {
                     if (u.cells.includes(data.index)) {
@@ -368,10 +443,10 @@
                         if (!u.hitCells.includes(data.index)) {
                             u.hitCells.push(data.index);
                         }
-                        u.isHit = true; // 한 대라도 맞으면 '이동 불가' 상태로 완전 잠금
+                        u.isHit = true; 
                     }
                 });
-                renderMyGrid(); // 맞은 유닛을 반투명하게 만드는 시각 효과 발동
+                renderMyGrid(); 
             }
 
             addGameLog(`${data.attacker === socket.id ? '내' : '상대'} 공격: ${data.index}번 → ${data.hit ? "💥 적중!" : "🌊 불발"}`);
