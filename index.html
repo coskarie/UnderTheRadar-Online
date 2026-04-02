@@ -1,392 +1,629 @@
-const express = require('express');
-const http = require('http');
-const { Server } = require('socket.io');
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>블록 찾기: 전술 기동 온라인</title>
+    <style>
+        body { font-family: sans-serif; display: flex; flex-direction: column; height: 100vh; margin: 0; background: #f0f0f0; overflow: hidden; }
+        #login-screen { position: fixed; inset: 0; background: white; display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 1000; }
+        #main-game { display: none; flex: 1; padding: 10px; gap: 15px; overflow-y: auto; }
+        
+        .left-panel { flex: 2; display: flex; flex-direction: column; gap: 5px; }
+        .right-panel { flex: 1; display: flex; flex-direction: column; gap: 10px; min-width: 250px; }
+        
+        .name-label { font-size: 1.1em; font-weight: bold; display: flex; align-items: center; gap: 8px; margin: 2px 0; }
+        .v-mark { color: #4CAF50; font-weight: 900; display: none; }
 
-const app = express();
-const server = http.createServer(app);
-const io = new Server(server);
+        .grid { 
+            width: 100%; height: 210px; background: #34495e; border: 2px solid #333; 
+            display: grid; grid-template-columns: repeat(20, 1fr); grid-template-rows: repeat(10, 1fr); 
+        }
+        .grid div { border: 0.1px solid #555; cursor: pointer; box-sizing: border-box; }
+        
+        .my-unit { background: #2ecc71 !important; border: 1px solid #27ae60 !important; }
+        /* 🚨 강철상자 전용 갈색 추가! */
+        .box-unit { background: #8D6E63 !important; border: 1px solid #5D4037 !important; }
+        .hit-unit { background: #e74c3c !important; border: 1px solid #c0392b !important; }
+        .miss-cell { background: #95a5a6 !important; }
+        
+        /* 🚨 시각적 마스터키 CSS 완벽 구현 🚨 */
+        .ghost { background: rgba(46, 204, 113, 0.4); } 
+        .ghost-purple { background: rgba(155, 89, 182, 0.6); } /* 움직이는 보라색 유닛 */
+        .ghost-original { background: rgba(255, 255, 255, 0.6); border: 2px dashed #ecf0f1 !important; } /* 제자리 흰색 껍데기 */
+        .ghost-invalid { background: rgba(231, 76, 60, 0.4); }
 
-// 방 데이터 저장소
-const rooms = {};
+        .inventory { display: flex; gap: 5px; flex-wrap: wrap; background: #ddd; padding: 8px; border-radius: 5px; margin-bottom: 5px; min-height: 45px; }
+        .unit-btn { padding: 6px 10px; border: 1px solid #333; cursor: pointer; background: white; font-weight: bold; font-size: 0.85em; }
+        .unit-btn.active { background: #3498db; color: white; border-color: #2980b9; }
+        
+        .ctrl-group { display: flex; gap: 8px; justify-content: center; margin-bottom: 5px; }
+        button { cursor: pointer; border-radius: 4px; border: 1px solid #999; font-weight: bold; }
+        #start-btn { background: #4CAF50; color: white; border: none; font-size: 1.1em; padding: 10px 20px; transition: 0.3s; }
+        #start-btn:disabled { background: #ccc; cursor: not-allowed; }
+        .sub-btn { background: #f39c12; color: white; border: none; padding: 8px 15px; }
+        
+        .log-area, .chat-area { flex: 1; background: white; border: 1px solid #ccc; overflow-y: auto; padding: 10px; font-size: 0.85em; border-radius: 5px; }
+        .chat-input-group { display: flex; gap: 5px; }
+        .user-list-box { background: #eee; padding: 10px; border-radius: 5px; font-size: 0.9em; display: flex; flex-direction: column; gap: 5px; }
+        .my-turn-border { border: 4px solid #ff9800 !important; }
 
-app.get('/', (req, res) => {
-    res.sendFile(__dirname + '/index.html');
-});
+        /* 🚨 신규 기획: 연료 및 액션 패널 CSS */
+        .action-panel { display: none; gap: 5px; margin-top: 5px; }
+        .action-btn { padding: 6px; border: 1px solid #7f8c8d; border-radius: 4px; background: #ecf0f1; cursor: pointer; font-size: 0.85em; flex: 1; }
+        .action-btn.active { background: #e74c3c; color: white; border-color: #c0392b; font-weight: bold; }
+        #fuel-display { display: none; font-weight: bold; color: #2980b9; font-size: 1.1em; background: #d6eaf8; padding: 5px; border-radius: 4px; text-align: center; }
+        .moving-1x1 { box-shadow: 0 0 10px 3px #9b59b6 inset !important; } /* 선택된 1x1 유닛 시각 효과 */
+    </style>
+</head>
+<body>
 
-io.on('connection', (socket) => {
-    let currentRoom = null;
-    let userName = "";
+    <div id="login-screen">
+        <h1>전술 기동 블록 찾기</h1>
+        <div style="margin-bottom: 10px; display: flex; flex-direction: column; gap: 5px;">
+            <input type="text" id="name-input" placeholder="이름 입력" style="padding: 10px; width: 200px;" value="테스터">
+            <input type="number" id="room-input" placeholder="방 번호" style="padding: 10px; width: 200px;" value="1">
+        </div>
+        <button onclick="joinGame()" style="padding: 12px 30px; background:#2ecc71; color:white; border:none; font-size: 1.1em;">입장하기</button>
+    </div>
 
-    // 1. 방 입장
-    socket.on('joinRoom', (data) => {
-        const { roomCode, name } = data;
-        currentRoom = roomCode;
-        userName = name;
-        socket.join(roomCode);
+    <div id="main-game">
+        <div class="left-panel">
+            <div class="name-label">상대: <span id="opp-name">대기 중</span> <span id="opp-v" class="v-mark">[V]</span></div>
+            <div id="opponent-grid" class="grid"></div>
+            
+            <div id="unit-inventory" class="inventory"></div>
+            
+            <div class="ctrl-group">
+                <button id="start-btn" onclick="handleButtonClick()">준비하기</button>
+                <button class="sub-btn" style="background:#e67e22;" onclick="resetPlacement()">초기화 🧹</button>
+            </div>
+            
+            <div class="name-label">나: <span id="my-name-display">-</span> <span id="my-v" class="v-mark">[V]</span></div>
+            <div id="fuel-display">⛽ 연료: <span id="current-fuel">8</span> / <span id="max-fuel">8</span></div>
+            <div id="action-panel" class="action-panel">
+                <button id="btn-ATTACK" class="action-btn active" onclick="setActionMode('ATTACK')">🎯 타격</button>
+                <button id="btn-SNIPE" class="action-btn" onclick="setActionMode('SNIPE')">🔫 저격 (-1⛽)</button>
+                <button id="btn-MOVE" class="action-btn" onclick="setActionMode('MOVE')">🏃 기동 (-2⛽)</button>
+            </div>
+            <div id="my-grid" class="grid" onmouseleave="clearGhost()"></div>
+        </div>
 
-        if (!rooms[roomCode]) {
-            rooms[roomCode] = {
-                players: [], 
-                spectators: [], 
-                gameState: 'LOBBY',
-                phraseCount: 0,
-                turn: null
-            };
+        <div class="right-panel">
+            <strong>📊 게임 로그</strong>
+            <div id="game-log" class="log-area"></div>
+            
+            <strong>💬 실시간 채팅</strong>
+            <div id="chat-log" class="chat-area"></div>
+            <div class="chat-input-group">
+                <input type="text" id="chat-input" style="flex:1; padding: 5px;" onkeypress="if(event.keyCode==13) sendChat()">
+                <button onclick="sendChat()" style="padding: 5px 15px;">전송</button>
+            </div>
+
+            <div class="user-list-box">
+                <strong>👥 접속자 명단</strong>
+                <div id="player-list">플레이어: </div>
+                <div id="spectator-list">관전자: </div>
+                <div style="display: flex; gap: 5px; margin-top: 5px;">
+                    <button onclick="changeRole('player')" style="flex:1; font-size: 0.8em; padding: 5px;">플레이어로 가기</button>
+                    <button onclick="changeRole('spectator')" style="flex:1; font-size: 0.8em; padding: 5px;">관전자로 가기</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        const socket = (typeof io !== 'undefined') ? io() : { emit: ()=>{}, on: ()=>{} };
+        let myName = "", myRoom = "", myUnits = [], isMyTurn = false;
+        
+        let gameStatus = "LOBBY"; 
+        let selectedUnitType = null; 
+        let isPlayer = false; 
+
+        // 🚨 신규 변수: 액션 모드 및 기동함선 선택용
+        let actionMode = 'ATTACK'; // 'ATTACK', 'SNIPE', 'MOVE'
+        let selected1x1Idx = -1; // 🏃 기동 모드에서 선택된 내 1x1 유닛 좌표
+
+        // 🚨 1번 규칙: 기동 단계에서 원래 위치를 저장할 변수 
+        let movingOriginalState = null; 
+
+        const UNIT_SHAPES = {
+            'ㄷ': [[0,0], [1,0], [0,1], [0,2], [1,2]],
+            'L':  [[0,0],[0,1],[0,2],[1,2]],
+            'T':  [[0,0],[1,0],[2,0],[1,1]],
+            'ㅗ': [[0,1],[1,0],[1,1],[2,1]],
+            'I':  [[0,0],[1,0],[2,0],[3,0]],
+            '1x1': [[0,0]],
+            '1x2': [[0,0],[1,0]],
+            '📦': [[0,0]] // 📦 심리전 강철 상자 추가!
+        };
+
+        // 인벤토리에 강철 상자 1개 추가
+        let inventory = { 'ㄷ':1, 'L':1, 'T':1, 'ㅗ':1, 'I':1, '1x1':1, '1x2':1, '📦':1 };
+
+        function joinGame() {
+            myName = document.getElementById('name-input').value;
+            myRoom = document.getElementById('room-input').value;
+            if(!myName || !myRoom) return alert("입력 정보 부족!");
+            document.getElementById('my-name-display').innerText = myName;
+            document.getElementById('login-screen').style.display = 'none';
+            document.getElementById('main-game').style.display = 'flex';
+            socket.emit('joinRoom', { roomCode: myRoom, name: myName });
+            renderInventory();
+            initGrids();
         }
 
-        rooms[roomCode].spectators.push({ id: socket.id, name: userName });
-        updateRoomInfo(roomCode);
-        io.to(roomCode).emit('systemMsg', `${userName}님이 입장하셨습니다.`);
-    });
-
-    // 2. 역할 변경 (플레이어 <-> 관전자)
-    socket.on('changeRole', (role) => {
-        if (!currentRoom) return;
-        const room = rooms[currentRoom];
-        if (room.gameState !== 'LOBBY') return;
-
-        room.players = room.players.filter(p => p.id !== socket.id);
-        room.spectators = room.spectators.filter(s => s.id !== socket.id);
-
-        if (role === 'player') {
-            if (room.players.length < 2) {
-                room.players.push({ 
-                    id: socket.id, 
-                    name: userName, 
-                    isReady: false, 
-                    units: [], 
-                    placed: false 
-                });
-            } else {
-                socket.emit('systemMsg', '플레이어 자리가 꽉 찼습니다.');
-                room.spectators.push({ id: socket.id, name: userName });
+        function initGrids() {
+            const oppGrid = document.getElementById('opponent-grid');
+            const myGrid = document.getElementById('my-grid');
+            oppGrid.innerHTML = ''; myGrid.innerHTML = '';
+            for(let i=0; i<200; i++) {
+                const oCell = document.createElement('div');
+                oCell.onclick = function() { 
+                    if(gameStatus === 'PLAYING' && isMyTurn) {
+                        if (actionMode === 'MOVE') return alert("🏃 기동 모드입니다. 내 격자판의 1x1 함선을 클릭하세요.");
+                        // 서버로 공격 명령과 함께 '어떤 타입의 공격인지(일반/저격)'도 보냅니다.
+                        socket.emit('attack', { index: i, type: actionMode }); 
+                    }
+                    else if(gameStatus === 'PLAYING' && !isMyTurn) addGameLog("[차단] 지금은 내 턴이 아닙니다.");
+                };
+                oppGrid.appendChild(oCell);
+                
+                const mCell = document.createElement('div');
+                mCell.onmouseenter = function() { showGhost(i); };
+                mCell.onclick = function() { 
+                    // 🚨 내 턴이고 기동(MOVE) 모드일 때는 1x1 선택 및 이동 로직으로 빠짐
+                    if(gameStatus === 'PLAYING' && isMyTurn && actionMode === 'MOVE') {
+                        handleMove1x1Click(i);
+                    } else {
+                        placeOrPickUnit(i); 
+                    }
+                };
+                myGrid.appendChild(mCell);
             }
-        } else {
-            room.spectators.push({ id: socket.id, name: userName });
-        }
-        updateRoomInfo(currentRoom);
-    });
-
-    // 3. 준비 완료 버튼 토글
-    socket.on('toggleReady', () => {
-        const room = rooms[currentRoom];
-        if (!room || room.gameState !== 'LOBBY') return;
-        
-        const player = room.players.find(p => p.id === socket.id);
-        if (player) {
-            player.isReady = !player.isReady;
-            updateRoomInfo(currentRoom);
-        }
-    });
-
-    // 4. 게임 시작 버튼
-    socket.on('startGame', () => {
-        const room = rooms[currentRoom];
-        if (!room) return;
-        
-        if (room.players.length === 2 && room.players.every(p => p.isReady)) {
-            room.gameState = 'PLACING';
-            io.to(currentRoom).emit('startPlacing');
-            updateRoomInfo(currentRoom);
-        } else {
-            socket.emit('systemMsg', '모든 플레이어가 준비되어야 시작할 수 있습니다.');
-        }
-    });
-
-    // 5. 배치 및 전술 기동 확정 로직
-    socket.on('finishPlacing', (units) => {
-        const room = rooms[currentRoom];
-        
-        if (!room || (room.gameState !== 'PLACING' && room.gameState !== 'MOVING')) return;
-        
-        const player = room.players.find(p => p.id === socket.id);
-        if (player) {
-            player.units = units;
-            player.placed = true;
         }
 
-        if (room.players.length === 2 && room.players.every(p => p.placed)) {
-            const prevState = room.gameState;
-            room.gameState = 'PLAYING';
-            room.players.forEach(p => p.placed = false);
+        // 🚨 신규 함수: 액션 버튼 클릭 시 모드 변경
+        function setActionMode(mode) {
+            actionMode = mode;
+            document.querySelectorAll('.action-btn').forEach(btn => btn.classList.remove('active'));
+            document.getElementById('btn-' + mode).classList.add('active');
+            selected1x1Idx = -1; // 모드가 바뀌면 선택해제
+            renderMyGrid();
+        }
 
-            if (prevState === 'PLACING') {
-                room.players.forEach(p => { p.maxFuel = 8; p.fuel = 8; });
-                
-                const turnIndex = Math.floor(Math.random() * 2);
-                room.turn = room.players[turnIndex].id;
-                
-                passTurn(room, room.turn);
-                
-                io.to(currentRoom).emit('gameStart', { turn: room.turn });
-                io.to(currentRoom).emit('systemMsg', "전투 시작! 선공을 확인하세요.");
-            } else {
-                io.to(currentRoom).emit('gameStart', { turn: room.turn });
-                io.to(currentRoom).emit('systemMsg', "전술 기동 완료! 전투를 재개합니다.");
+        // 🚨 신규 함수: 기동함선(1x1) 클릭 및 이동 로직 (클라이언트 1차 필터링)
+        function handleMove1x1Click(idx) {
+            // 1. 유닛 선택하기
+            if (selected1x1Idx === -1) {
+                const unit = myUnits.find(u => u.type === '1x1' && u.cells.includes(idx) && !u.isHit);
+                if (unit) {
+                    selected1x1Idx = idx;
+                    addGameLog("[기동] 1x1 함선을 선택했습니다. 이동할 인접한 빈칸을 클릭하세요.");
+                    renderMyGrid();
+                } else {
+                    alert("선택한 칸에 온전한 1x1 기동함선이 없습니다.");
+                }
+                return;
             }
-            updateRoomInfo(currentRoom);
-        } else {
-            socket.emit('systemMsg', "상대방의 작전 완료를 기다리는 중입니다...");
-        }
-    });
 
-    // 6. 특수 능력 판정 공격 로직 (🚨 대면 모드 및 사선/그림자 방패 완벽 적용)
-    socket.on('attack', (data) => {
-        const room = rooms[currentRoom];
-        if (!room || room.gameState !== 'PLAYING' || room.turn !== socket.id) return;
-
-        const { index, type } = data;
-        const attackIndex = index;
-        const targetIndex = 199 - attackIndex; // 🚨 180도 회전 (대면 모드 공식)
-
-        const attacker = room.players.find(p => p.id === socket.id);
-        const opponent = room.players.find(p => p.id !== socket.id);
-
-        const attackX = attackIndex % 20; 
-        const targetX = targetIndex % 20;
-        const targetY = Math.floor(targetIndex / 20);
-
-        // 🔫 SNIPE (저격) 로직 검증
-        if (type === 'SNIPE') {
-            if (attacker.fuel < 1) return socket.emit('systemMsg', "저격 실패: 연료가 1 필요합니다.");
-            
-            // 🚨 수정: 내가 클릭한 X열(attackX)에 내 저격수가 있는지 그대로 검사합니다.
-            // 180도 회전은 상대방의 배를 판정할 때만 쓰고, 내 사선은 내 화면 기준이어야 합니다.
-            
-            // 1. 저격수(I) 사선 검증
-            const hasLineOfSight = attacker.units.some(u => {
-                if (u.type !== 'I') return false; 
-                const isAlive = u.cells.length > (u.hitCells ? u.hitCells.length : 0);
-                // 내 화면의 attackX열에 저격수가 있는지 확인
-                return isAlive && u.cells.some(c => c % 20 === attackX);
-            });
-
-            if (!hasLineOfSight) return socket.emit('systemMsg', "저격 실패: 아군 ㅡ(I) 블럭의 사선(X열)을 벗어났습니다!");
-
-            // 2. 아군 탱커(T) 오사 방지 검증
-            const isBlockedByAlly = attacker.units.some(u => {
-                if (u.type !== 'T') return false; 
-                const isAlive = u.cells.length > (u.hitCells ? u.hitCells.length : 0);
-                // 내 화면의 attackX열을 탱커가 가로막고 있는지 확인
-                return isAlive && u.cells.some(c => c % 20 === attackX); 
-            });
-
-            if (isBlockedByAlly) return socket.emit('systemMsg', "저격 실패: 아군 ㅜ(T) 블럭에 시야가 가려져 있습니다.");
-            
-            attacker.fuel -= 1; 
-            socket.emit('updateFuel', { current: attacker.fuel, max: attacker.maxFuel });
+            // 2. 선택 후 빈칸 클릭 시 서버로 이동 요청 쏘기
+            if (selected1x1Idx !== -1) {
+                if (myUnits.some(u => u.cells.includes(idx))) {
+                    alert("다른 유닛이 있는 곳으로는 이동할 수 없습니다!");
+                    selected1x1Idx = -1; renderMyGrid();
+                    return;
+                }
+                // 서버에 이동 요청 쏘기 (비용 및 거리 계산은 서버에서 철저히 검증)
+                socket.emit('move1x1', { from: selected1x1Idx, to: idx });
+                selected1x1Idx = -1; // 요청 후 선택 해제
+                renderMyGrid();
+            }
         }
 
-        let hitResult = false;
-        let hitType = null;
-        let shieldBlocked = false;
+        function getPlacementCells(type, pivotIdx) {
+            const shape = UNIT_SHAPES[type];
+            if(!shape) return [];
 
-        // 🛡️ 상대방 탱커(T) 블럭의 후방 그림자 보호 검증
-        opponent.units.forEach(u => {
-            if (u.type === 'T') {
-                const isAlive = u.cells.length > (u.hitCells ? u.hitCells.length : 0);
-                if (isAlive) {
-                    const tXs = u.cells.map(c => c % 20);
-                    const tYs = u.cells.map(c => Math.floor(c / 20));
-                    const minX = Math.min(...tXs);
-                    const maxX = Math.max(...tXs);
-                    const frontY = Math.min(...tYs); // T블럭의 가장 앞쪽 Y (전면부)
+            const pcol = pivotIdx % 20;       
+            const prow = Math.floor(pivotIdx / 20); 
 
-                    // 타겟이 T블럭과 같은 X열이고, 전면부보다 뒤쪽(Y가 큼)이며, T블럭 자체를 맞춘 게 아니라면 막힘!
-                    if (targetX >= minX && targetX <= maxX && targetY > frontY && !u.cells.includes(targetIndex)) {
-                        shieldBlocked = true;
+            const minC = Math.min(...shape.map(o => o[0]));
+            const minR = Math.min(...shape.map(o => o[1]));
+
+            return shape.map(([c, r]) => {
+                const fc = pcol + (c - minC);
+                const fr = prow + (r - minR);
+                if(fc < 0 || fc >= 20 || fr < 0 || fr >= 10) return -1;
+                return fr * 20 + fc;
+            });
+        }
+
+        function placeOrPickUnit(idx) {
+            if (!isPlayer) {
+                addGameLog("[차단] 관전자는 유닛을 배치할 수 없습니다."); return;
+            }
+            if (gameStatus !== 'PLACING' && gameStatus !== 'MOVING') {
+                addGameLog("[차단] 지금은 유닛을 움직일 수 있는 단계가 아닙니다."); return;
+            }
+
+            // [클릭 시나리오 1: 이미 배치된 유닛을 다시 집어드는 경우]
+            const unitIdx = myUnits.findIndex(u => u.cells.includes(idx));
+            if (unitIdx !== -1) {
+                const unit = myUnits[unitIdx];
+                if (unit.isHit) return alert("이미 피격된 유닛은 이동할 수 없습니다!");
+
+                // 🚨 2번 규칙: 하나만 옮겼는지 판별하는 자물쇠 검사
+                if (gameStatus === 'MOVING') {
+                    // 이미 다른 놈을 움직였는데(movingOriginalState 존재), 그놈이 아닌 다른 유닛을 클릭한 경우
+                    if (movingOriginalState !== null && !unit.isMoved) {
+                        addGameLog("[차단] 1개의 유닛만 기동할 수 있습니다. 원래 자리(흰색)로 되돌리면 취소됩니다.");
+                        return;
+                    }
+                    // 처음으로 유닛을 집어드는 경우: 원본 위치 스냅샷 저장!
+                    if (movingOriginalState === null) {
+                        movingOriginalState = { type: unit.type, cells: [...unit.cells] };
                     }
                 }
+
+                myUnits.splice(unitIdx, 1);
+                selectedUnitType = unit.type;
+                inventory[unit.type]++;
+                renderInventory(); renderMyGrid();
+                
+                if (gameStatus === 'MOVING') addGameLog("[알림] 기동 유닛 선택 완료. 재배치할 곳을 클릭하세요.");
+                else addGameLog("[알림] 유닛 회수: " + unit.type);
+                return;
             }
-        });
 
-        if (shieldBlocked) {
-            socket.emit('systemMsg', "🛡️ 상대의 ㅜ(T) 블럭 후방 보호 영역에 막혀 빗나갔습니다!");
-        } else {
-            opponent.units.forEach(unit => {
-                if (unit.cells.includes(targetIndex)) {
-                    if (!unit.hitCells) unit.hitCells = [];
-                    if (!unit.hitCells.includes(targetIndex)) {
-                        unit.hitCells.push(targetIndex);
-                        unit.isHit = true;
-                    }
-                    hitResult = true;
-                    hitType = unit.type;
+            // [클릭 시나리오 2: 선택한 유닛을 바닥에 내려놓는 경우]
+            if(!selectedUnitType) {
+                addGameLog("[알림] 먼저 유닛 모양을 선택하세요!"); return;
+            }
 
-                    if (unit.type === 'ㄷ' && unit.hitCells.length === unit.cells.length) {
-                        opponent.maxFuel = Math.max(0, opponent.maxFuel - 2);
-                        attacker.maxFuel += 1;
-                        io.to(currentRoom).emit('systemMsg', "⚠️ 제조창(ㄷ) 완전 파괴! [공격자 최대연료 +1 / 피해자 -2]");
+            const cells = getPlacementCells(selectedUnitType, idx);
+
+            if(cells.includes(-1)) return;
+            if(cells.some(c => myUnits.some(u => u.cells.includes(c)))) return;
+
+            // 🚨 4번 규칙 (UNDO 마법): 놓으려는 위치가 스냅샷(흰색 껍데기)과 완전히 일치하는지 파이썬처럼 리스트 비교
+            let isOriginalPos = false;
+            if (gameStatus === 'MOVING' && movingOriginalState) {
+                const sortedCells = [...cells].sort((a,b)=>a-b);
+                const sortedOriginal = [...movingOriginalState.cells].sort((a,b)=>a-b);
+                isOriginalPos = sortedCells.length === sortedOriginal.length && 
+                                sortedCells.every((v, i) => v === sortedOriginal[i]); 
+            }
+
+            myUnits.push({ 
+                type: selectedUnitType, 
+                cells: cells, 
+                isHit: false, 
+                isMoved: (gameStatus === 'MOVING' && !isOriginalPos) // 제자리가 아니면 이동된 유닛으로 낙인!
+            });
+            
+            inventory[selectedUnitType]--;
+
+            if (gameStatus === 'MOVING') {
+                selectedUnitType = null; // 기동 중엔 인벤토리 안 봐도 되도록 자동 선택해제
+                if (isOriginalPos) {
+                    movingOriginalState = null; // 롤백(Undo) 발동! 자물쇠 완전히 품
+                    myUnits[myUnits.length - 1].isMoved = false;
+                    addGameLog("[알림] 원위치 복귀 (실행 취소). 다시 다른 유닛을 선택할 수 있습니다!");
+                } else {
+                    addGameLog("[알림] 기동 위치 지정 완료. 다시 클릭해 수정하거나 기동 확정을 누르세요.");
+                }
+            } else {
+                if(inventory[selectedUnitType] <= 0) {
+                    selectedUnitType = Object.keys(inventory).find(t => inventory[t] > 0) || null;
+                }
+                const remaining = Object.entries(inventory).filter(([,v]) => v > 0);
+                if(remaining.length === 0) {
+                    addGameLog("[성공] 모든 유닛 배치 완료! 확정 버튼을 누르세요.");
+                }
+            }
+
+            renderInventory(); renderMyGrid();
+        }
+
+        function renderMyGrid() {
+            const cells = document.getElementById('my-grid').children;
+            for(let i=0; i<200; i++) {
+                cells[i].className = '';
+                cells[i].style.opacity = "1";
+            }
+            
+            // 확정 버튼을 눌러서 movingOriginalState가 null이 되면, 이 조건문을 알아서 건너뛰면서 흰색 껍데기가 싹 사라집니다!
+            if (gameStatus === 'MOVING' && movingOriginalState) {
+                movingOriginalState.cells.forEach(c => {
+                    if(c >= 0 && c < 200) cells[c].classList.add('ghost-original');
+                });
+            }
+
+            myUnits.forEach(u => {
+                u.cells.forEach(c => {
+                    if(c < 0 || c >= 200) return;
+                    
+                    // 🚨 강철상자(📦)면 갈색 클래스, 아니면 초록색 클래스 부여!
+                    if (u.type === '📦') {
+                        cells[c].classList.add('box-unit');
+                    } else {
+                        cells[c].classList.add('my-unit');
                     }
                     
-                    if (unit.type === '📦') {
-                        opponent.fuel += 2;
-                        io.to(currentRoom).emit('systemMsg', "📦 강철 상자 피격! 상대방이 연료를 2 획득했습니다.");
-                        io.to(opponent.id).emit('updateFuel', { current: opponent.fuel, max: opponent.maxFuel });
-                    }
+                    if(u.isHit) cells[c].style.opacity = "0.6";
+                    if(u.hitCells && u.hitCells.includes(c)) cells[c].classList.add('hit-unit');
+                    
+                    // 🚨 기동 모드에서 선택된 1x1 유닛을 예쁘게 빛나게 만듦
+                    if (c === selected1x1Idx) cells[c].classList.add('moving-1x1');
+                });
+            });
+        }
+
+        function showGhost(idx) {
+            clearGhost();
+            
+            if (!isPlayer || (gameStatus !== 'PLACING' && gameStatus !== 'MOVING') || !selectedUnitType) return;
+            
+            const cells = getPlacementCells(selectedUnitType, idx);
+            const myG = document.getElementById('my-grid');
+            const invalid = cells.includes(-1) || cells.some(c => myUnits.some(u => u.cells.includes(c)));
+            
+            // 🚨 3번 규칙: MOVING 단계면 마스터키(보라색)로 시각적 피드백 제공
+            const ghostClass = (gameStatus === 'MOVING') ? 'ghost-purple' : 'ghost';
+
+            cells.forEach(c => { 
+                if(c >= 0 && c < 200) {
+                    myG.children[c].classList.add(ghostClass);
+                    if(invalid) myG.children[c].classList.add('ghost-invalid');
                 }
             });
         }
 
-        if (hitResult) {
-            // 1. 먼저 전멸 여부 확인
-            const allDestroyed = opponent.units.every(u => u.type === '📦' || u.cells.length === (u.hitCells ? u.hitCells.length : 0));
+        function clearGhost() { 
+            // 흰색 껍데기는 지우면 안 되므로 제외하고 싹 지움
+            document.querySelectorAll('.ghost, .ghost-purple, .ghost-invalid').forEach(g => {
+                g.classList.remove('ghost', 'ghost-purple', 'ghost-invalid');
+            }); 
+        }
+
+        function renderInventory() {
+            const inv = document.getElementById('unit-inventory');
+            inv.innerHTML = '';
+            for(let type in inventory) {
+                if(inventory[type] > 0) {
+                    const btn = document.createElement('button');
+                    btn.className = 'unit-btn' + (selectedUnitType === type ? ' active' : '');
+                    btn.innerText = `${type}(${inventory[type]})`;
+                    btn.onclick = function() { selectedUnitType = type; renderInventory(); };
+                    inv.appendChild(btn);
+                }
+            }
+        }
+
+        function resetPlacement() {
+            // MOVING 단계일 때도 쓰레기통(초기화) 버튼을 누르면 원위치(Undo) 시켜주는 디테일 추가
+            if(gameStatus === 'MOVING') {
+                if (movingOriginalState) {
+                    let movedUnitIdx = myUnits.findIndex(u => u.isMoved);
+                    if (movedUnitIdx !== -1) myUnits.splice(movedUnitIdx, 1);
+                    else if (selectedUnitType) { inventory[selectedUnitType]--; selectedUnitType = null; }
+                    
+                    myUnits.push({ type: movingOriginalState.type, cells: [...movingOriginalState.cells], isHit: false, isMoved: false });
+                    movingOriginalState = null;
+                    renderInventory(); renderMyGrid();
+                    addGameLog("[알림] 기동이 빗자루 버튼으로 취소되었습니다. 다시 선택하세요.");
+                }
+                return;
+            }
+
+            if(gameStatus !== 'PLACING') return; 
             
-            if (allDestroyed) {
-                // 게임 종료 시
-                io.to(currentRoom).emit('attackResult', { attacker: socket.id, attackIndex, targetIndex, hit: true });
-                room.gameState = 'ENDED';
-                io.to(currentRoom).emit('gameOver', { winner: userName });
-            } else if (hitType === 'T') {
-                // 🛡️ T 블록을 맞췄을 때 (적중했지만 턴 뺏김)
-                io.to(currentRoom).emit('systemMsg', "🛡️ ㅜ(T) 블럭 타격: 단단한 장갑에 튕겨 추가 공격 기회가 소멸되었습니다!");
-                passTurn(room, opponent.id);
+            myUnits.forEach(u => { if(!u.isHit) inventory[u.type]++; });
+            myUnits = myUnits.filter(u => u.isHit);
+            selectedUnitType = Object.keys(inventory).find(t => inventory[t] > 0) || null;
+            renderInventory(); renderMyGrid();
+            addGameLog("[알림] 배치 초기화 완료");
+        }
+
+        function handleButtonClick() {
+            const btn = document.getElementById('start-btn');
+            const txt = btn.innerText.trim();
+
+            if (txt === "게임 시작하기!") {
+                socket.emit('startGame');
+            } else if (txt === "준비하기" || txt === "준비 취소") {
+                socket.emit('toggleReady');
+            } else if (txt === "배치 확정" || txt === "본대 기동 확정") {
+                if (gameStatus === 'PLACING' && Object.values(inventory).some(v => v > 0)) {
+                    return alert("모든 유닛을 배치해야 합니다!\n남은 유닛: " +
+                        Object.entries(inventory).filter(([,v])=>v>0).map(([k,v])=>`${k}(${v}개)`).join(', '));
+                }
+                // 들고만 있고 내려놓지 않은 상태 방지
+                if (gameStatus === 'MOVING' && selectedUnitType) {
+                    return alert("기동 중인 유닛을 바닥에 내려놓아야 확정할 수 있습니다!");
+                }
                 
-                // 신호는 여기서 "딱 한 번"만 보냅니다.
-                io.to(currentRoom).emit('attackResult', { 
-                    attacker: socket.id, 
-                    attackIndex, 
-                    targetIndex, 
-                    hit: true, 
-                    nextTurn: opponent.id 
-                });
+                btn.disabled = true; btn.innerText = "상대 대기 중...";
+                socket.emit('finishPlacing', myUnits);
+
+                // 🚨 [핵심 수정 포인트] 확정 버튼을 누르는 순간, 흰색 껍데기 기억을 지우고 화면 갱신!
+                if (gameStatus === 'MOVING') {
+                    movingOriginalState = null;
+                    renderMyGrid(); 
+                }
+                
+            } else if (txt === "게임 종료") {
+                socket.emit('requestRematch'); // 서버에 초기화 요청
+            }
+        }
+
+        socket.on('roomData', data => {
+            const me = data.players.find(p => p.id === socket.id);
+            const opp = data.players.find(p => p.id !== socket.id);
+            const btn = document.getElementById('start-btn');
+
+            isPlayer = !!me; 
+            gameStatus = data.gameState;
+
+            document.getElementById('my-v').style.display = (me && me.isReady) ? 'inline' : 'none';
+            if (opp) {
+                document.getElementById('opp-name').innerText = opp.name;
+                document.getElementById('opp-v').style.display = opp.isReady ? 'inline' : 'none';
             } else {
-                // 일반 적중 시 (턴 유지)
-                io.to(currentRoom).emit('attackResult', { attacker: socket.id, attackIndex, targetIndex, hit: true });
+                document.getElementById('opp-name').innerText = "대기 중";
+                document.getElementById('opp-v').style.display = 'none';
             }
-        } else {
-            // 불발 또는 방패 막힘 시 (턴 넘어감)
-            room.phraseCount++;
-            io.to(currentRoom).emit('attackResult', { 
-                attacker: socket.id, 
-                attackIndex, 
-                targetIndex, 
-                hit: false, 
-                blocked: shieldBlocked, 
-                nextTurn: opponent.id 
-            });
-            passTurn(room, opponent.id);
 
-            // 5프레이즈 재배치 로직
-            if (room.phraseCount > 0 && room.phraseCount % 5 === 0) {
-                room.gameState = 'MOVING';
-                io.to(currentRoom).emit('startMoving');
-                io.to(currentRoom).emit('systemMsg', "⚠️ 5프레이즈 도달! 본대 유닛을 재배치하세요.");
+            if (data.gameState === 'LOBBY') {
+                btn.disabled = false;
+                if (data.players.length === 2 && data.players.every(p => p.isReady)) {
+                    btn.innerText = "게임 시작하기!"; btn.style.background = "#FF9800";
+                } else {
+                    btn.innerText = (me && me.isReady) ? "준비 취소" : "준비하기"; btn.style.background = "#4CAF50";
+                }
             }
-        }
-    });
-
-    // 9. 기동함선(1x1) 이동 엔진 (🚨 대면 모드 레이더 업그레이드)
-    socket.on('move1x1', (data) => {
-        const room = rooms[currentRoom];
-        if (!room || room.gameState !== 'PLAYING' || room.turn !== socket.id) return;
-        
-        const { from, to } = data;
-        const player = room.players.find(p => p.id === socket.id);
-        const opponent = room.players.find(p => p.id !== socket.id);
-        
-        if (player.fuel < 2) return socket.emit('systemMsg', "기동 실패: 연료가 2 필요합니다.");
-
-        const fromX = from % 20, fromY = Math.floor(from / 20);
-        const toX = to % 20, toY = Math.floor(to / 20);
-        if (Math.abs(fromX - toX) > 1 || Math.abs(fromY - toY) > 1) {
-            return socket.emit('systemMsg', "기동 실패: 인접한 1칸(대각선 포함 8방향)으로만 이동 가능합니다.");
-        }
-
-        const unit = player.units.find(u => u.type === '1x1' && u.cells.includes(from) && !u.isHit);
-        if (!unit) return;
-
-        unit.cells = [to];
-        player.fuel -= 2;
-        socket.emit('updateFuel', { current: player.fuel, max: player.maxFuel });
-        socket.emit('syncMovedUnit', { oldIdx: from, newIdx: to }); 
-        socket.emit('systemMsg', "🏃 1x1 기동함선 이동 완료. (-2⛽)");
-
-        // 📡 레이더(L) 발각 판정 (내 toX는 상대방 입장에서는 19 - toX 열에 해당함!)
-        const isSpotted = opponent.units.some(u => {
-            if (u.type !== 'L') return false;
-            const isAlive = u.cells.length > (u.hitCells ? u.hitCells.length : 0);
-            return isAlive && u.cells.some(c => c % 20 === (19 - toX));
+            document.getElementById('player-list').innerText = "플레이어: " + data.players.map(p => p.name).join(', ');
+            document.getElementById('spectator-list').innerText = "관전자: " + data.spectators.map(s => s.name).join(', ');
         });
 
-        if (isSpotted) {
-            io.to(currentRoom).emit('systemMsg', "📡 [레이더 경보] 적 기동함선의 움직임이 포착되었습니다!");
-        }
-    });
+        function changeRole(r) { socket.emit('changeRole', r); }
 
-    // 7. 게임 종료 및 로비 초기화 로직
-    socket.on('requestRematch', () => {
-        const room = rooms[currentRoom];
-        if (!room || room.gameState !== 'ENDED') return;
-
-        room.gameState = 'LOBBY';
-        room.phraseCount = 0;
-        room.turn = null;
-
-        room.players.forEach(p => {
-            room.spectators.push({ id: p.id, name: p.name });
+        socket.on('startPlacing', () => {
+            gameStatus = "PLACING";
+            movingOriginalState = null;
+            if (myUnits.length === 0) {
+                inventory = { 'ㄷ':1, 'L':1, 'T':1, 'ㅗ':1, 'I':1, '1x1':1, '1x2':1, '📦':1 }; // 상자 포함 리셋
+                selectedUnitType = Object.keys(inventory)[0];
+            }
+            document.getElementById('fuel-display').style.display = 'none';
+            document.getElementById('action-panel').style.display = 'none';
+            renderInventory(); renderMyGrid();
+            const btn = document.getElementById('start-btn');
+            btn.innerText = "배치 확정"; btn.style.background = "#2ecc71"; btn.disabled = false;
         });
-        
-        room.players = [];
 
-        io.to(currentRoom).emit('rematchStarted');
-        updateRoomInfo(currentRoom);
-        io.to(currentRoom).emit('systemMsg', "방이 초기화되었습니다. 다시 게임을 하려면 [플레이어로 가기]를 눌러주세요!");
-    });
-
-    socket.on('sendChat', (msg) => {
-        if (currentRoom) io.to(currentRoom).emit('receiveChat', { name: userName, msg });
-    });
-
-    // 8. 접속 종료 로직
-    socket.on('disconnect', () => {
-        if (currentRoom && rooms[currentRoom]) {
-            const room = rooms[currentRoom];
-            const wasPlayer = room.players.some(p => p.id === socket.id);
+        socket.on('startMoving', () => {
+            gameStatus = "MOVING"; // 이것은 5프레이즈 본대 재배치용 상태
+            movingOriginalState = null; 
+            selectedUnitType = null;
+            myUnits.forEach(u => u.isMoved = false); 
             
-            room.players = room.players.filter(p => p.id !== socket.id);
-            room.spectators = room.spectators.filter(s => s.id !== socket.id);
-            
-            if (wasPlayer && (room.gameState === 'PLAYING' || room.gameState === 'PLACING' || room.gameState === 'MOVING')) {
-                room.gameState = 'LOBBY';
-                room.phraseCount = 0;
-                room.turn = null;
-                room.players.forEach(p => { 
-                    p.isReady = false; 
-                    p.placed = false; 
-                    p.units = []; 
-                });
+            const btn = document.getElementById('start-btn');
+            btn.innerText = "본대 기동 확정"; btn.style.background = "#9b59b6"; btn.disabled = false;
+            addGameLog("[시스템] 본대 전술 기동 단계입니다. 1개의 유닛만 재배치할 수 있습니다. (1x1 제외)");
+        });
+
+        socket.on('gameStart', data => {
+            gameStatus = "PLAYING";
+            document.getElementById('fuel-display').style.display = 'block';
+            document.getElementById('action-panel').style.display = 'flex';
+            setActionMode('ATTACK'); // 기본은 타격 모드
+            updateTurn(data.turn);
+            addGameLog("[시스템] 전투 시작! 연료를 관리하며 액션을 선택하세요.");
+        });
+
+        // 🚨 신규 수신: 서버로부터 연료 현황 업데이트 받기
+        socket.on('updateFuel', data => {
+            document.getElementById('current-fuel').innerText = data.current;
+            document.getElementById('max-fuel').innerText = data.max;
+        });
+
+        socket.on('attackResult', data => {
+            if (data.attacker === socket.id) {
+                // 1. 내가 공격했을 때: 막힌 게 아닐 때만 색칠함!
+                if (!data.blocked) {
+                    document.getElementById('opponent-grid').children[data.attackIndex].classList.add(data.hit ? 'hit-unit' : 'miss-cell');
+                }
+                addGameLog(`내 공격: ${data.hit ? "💥 적중!" : (data.blocked ? "🛡️ 떡장갑에 막힘!" : "🌊 불발")}`);
+            } else {
+                // 2. 내가 방어할 때: 막힌 게 아닐 때만 피격 판정
+                if (!data.blocked) {
+                    document.getElementById('my-grid').children[data.targetIndex].classList.add(data.hit ? 'hit-unit' : 'miss-cell');
+                }
                 
-                io.to(currentRoom).emit('systemMsg', "🚨 상대방의 연결이 끊겨 게임이 로비로 초기화되었습니다.");
-                io.to(currentRoom).emit('rematchStarted'); 
+                if (data.hit) {
+                    myUnits.forEach(u => {
+                        if (u.cells.includes(data.targetIndex)) {
+                            if (!u.hitCells) u.hitCells = [];
+                            if (!u.hitCells.includes(data.targetIndex)) {
+                                u.hitCells.push(data.targetIndex);
+                            }
+                            u.isHit = true; 
+                        }
+                    });
+                    renderMyGrid(); 
+                }
+                addGameLog(`상대 공격: ${data.hit ? "💥 적중!" : (data.blocked ? "🛡️ 떡장갑에 막아냄!" : "🌊 불발")}`);
             }
             
-            updateRoomInfo(currentRoom);
-        }
-    });
+            // 🚨 빗나갔을 때(!data.hit) 뿐만 아니라, 서버가 다음 턴 정보를 줬다면 무조건 업데이트!
+            if (!data.hit || data.nextTurn) {
+                updateTurn(data.nextTurn);
+            }
+        });
 
-    // 🚨 턴 넘기기 유틸 함수 (연료 마이너스 통장 탈출 공식 적용!)
-    function passTurn(room, nextTurnId) {
-        room.turn = nextTurnId;
-        const nextPlayer = room.players.find(p => p.id === nextTurnId);
-        if (nextPlayer) {
-            const aliveShips = nextPlayer.units.filter(u => u.type !== '📦' && u.cells.length > (u.hitCells ? u.hitCells.length : 0)).length;
+        function updateTurn(turnId) {
+            isMyTurn = (socket.id === turnId);
+            const btn = document.getElementById('start-btn');
+            btn.innerText = isMyTurn ? "🔥 나의 턴" : "⏳ 상대 턴";
+            btn.style.background = isMyTurn ? "#e74c3c" : "#34495e";
+            document.getElementById('opponent-grid').className = isMyTurn ? "grid my-turn-border" : "grid";
+        }
+
+        socket.on('gameOver', data => {
+            gameStatus = "ENDED";
+            const btn = document.getElementById('start-btn');
+            btn.disabled = false; btn.innerText = "게임 종료"; btn.style.background = "#8e44ad";
+            addGameLog("[시스템] 게임 종료! 승자: " + data.winner);
+            alert("게임 종료! 승자: " + data.winner);
+        });
+
+        socket.on('rematchStarted', () => { 
+            // 🚨 무식한 location.reload() 삭제 완료! 
+            // 대신 화면의 데이터만 빗자루로 싹 쓸어냅니다.
+            myUnits = [];
+            isMyTurn = false;
+            gameStatus = "LOBBY";
+            selectedUnitType = null;
+            movingOriginalState = null;
+            inventory = { 'ㄷ':1, 'L':1, 'T':1, 'ㅗ':1, 'I':1, '1x1':1, '1x2':1, '📦':1 };
             
-            // 🚨 매 턴마다 [최대 연료 - 생존 함선 수] 공식으로 리필!
-            nextPlayer.fuel = nextPlayer.maxFuel - aliveShips; 
-            if (nextPlayer.fuel < 0) nextPlayer.fuel = 0; 
+            initGrids(); // 양쪽 격자판 HTML 싹 지우고 새로 그리기
+            renderInventory(); // 인벤토리 리셋
             
-            io.to(nextTurnId).emit('updateFuel', { current: nextPlayer.fuel, max: nextPlayer.maxFuel });
-            io.to(nextTurnId).emit('systemMsg', `🔥 내 턴 시작! (유지비 차감 후 연료: ⛽ ${nextPlayer.fuel})`);
+            const btn = document.getElementById('start-btn');
+            btn.innerText = "준비하기"; 
+            btn.style.background = "#4CAF50";
+            btn.disabled = false;
+            
+            addGameLog("[시스템] 게임이 종료되었습니다. 모든 인원이 관전자로 이동합니다.");
+        });
+        socket.on('systemMsg', msg => addGameLog("[시스템] " + msg));
+        
+        function sendChat() {
+            const i = document.getElementById('chat-input');
+            if(i.value) socket.emit('sendChat', i.value);
+            i.value = "";
         }
-    }
+        socket.on('receiveChat', d => {
+            const l = document.getElementById('chat-log');
+            l.innerHTML += `<div><strong>${d.name}:</strong> ${d.msg}</div>`;
+            l.scrollTop = l.scrollHeight;
+        });
 
-    function updateRoomInfo(roomCode) {
-        if (rooms[roomCode]) {
-            io.to(roomCode).emit('roomData', rooms[roomCode]);
+        socket.on('syncMovedUnit', data => {
+            let unit = myUnits.find(u => u.type === '1x1' && u.cells.includes(data.oldIdx));
+            if (unit) unit.cells = [data.newIdx];
+            renderMyGrid();
+        });
+
+        function addGameLog(m) {
+            const l = document.getElementById('game-log');
+            l.innerHTML += `<div>${m}</div>`;
+            l.scrollTop = l.scrollHeight;
         }
-    }
-});
-
-const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => console.log(`Tactical Engine Active on port ${PORT}`));
+    </script>
+</body>
+</html>
