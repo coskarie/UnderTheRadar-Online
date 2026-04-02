@@ -166,23 +166,28 @@ io.on('connection', (socket) => {
         }
     });
 
-    // 7. 다시하기 로직
+    // 7. 게임 종료 및 로비 초기화 로직
     socket.on('requestRematch', () => {
         const room = rooms[currentRoom];
         if (!room || room.gameState !== 'ENDED') return;
 
+        // 1. 방 상태를 맨 처음(LOBBY)으로 되돌림
         room.gameState = 'LOBBY';
         room.phraseCount = 0;
         room.turn = null;
-        room.players.forEach(p => {
-            p.isReady = false;
-            p.units = [];
-            p.placed = false;
-        });
 
+        // 🚨 2. [핵심] 기존 플레이어들의 멱살을 잡고 관전자 명단으로 강제 이동!
+        room.players.forEach(p => {
+            room.spectators.push({ id: p.id, name: p.name });
+        });
+        
+        // 3. 플레이어 명단을 텅 비워서 진정한 '초기 상태'로 만듦
+        room.players = [];
+
+        // 4. 모두에게 화면(로컬) 지우라고 명령하고, 바뀐 관전자 명단을 쏴줌
         io.to(currentRoom).emit('rematchStarted');
         updateRoomInfo(currentRoom);
-        io.to(currentRoom).emit('systemMsg', "방이 초기화되었습니다. 다시 준비해주세요!");
+        io.to(currentRoom).emit('systemMsg', "방이 초기화되었습니다. 다시 게임을 하려면 [플레이어로 가기]를 눌러주세요!");
     });
 
     socket.on('sendChat', (msg) => {
