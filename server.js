@@ -93,16 +93,25 @@ io.on('connection', (socket) => {
         }
     });
 
-    // 5. 배치 및 전술 기동 확정 로직
+    // 5. 배치 및 전술 기동 확정 로직 (🚨 좌표 동기화 강화 버전)
     socket.on('finishPlacing', (units) => {
         const room = rooms[currentRoom];
-        
         if (!room || (room.gameState !== 'PLACING' && room.gameState !== 'MOVING')) return;
         
         const player = room.players.find(p => p.id === socket.id);
         if (player) {
-            player.units = units;
+            // 🚨 [포인트 1] 단순 대입(=) 대신 깊은 복사(Deep Copy)를 사용합니다.
+            // 클라이언트가 보낸 'units' 데이터가 혹시라도 예전 참조를 물고 있을 경우를 대비합니다.
+            player.units = JSON.parse(JSON.stringify(units)); 
+            
             player.placed = true;
+
+            // 🚨 [포인트 2] 서버 터미널에 로그를 찍어보세요!
+            // 유닛을 옮기고 '확정'을 눌렀을 때, 터미널에 찍히는 'cells'가 새 좌표인지 확인해야 합니다.
+            console.log(`[DATA SYNC] ${player.name}의 유닛 정보 갱신 완료.`);
+            player.units.forEach(u => {
+                if(u.type === 'I') console.log(`저격수(I) 현재 서버 좌표: ${u.cells}`);
+            });
         }
 
         if (room.players.length === 2 && room.players.every(p => p.placed)) {
@@ -112,17 +121,18 @@ io.on('connection', (socket) => {
 
             if (prevState === 'PLACING') {
                 room.players.forEach(p => { p.maxFuel = 8; p.fuel = 8; });
-                
                 const turnIndex = Math.floor(Math.random() * 2);
                 room.turn = room.players[turnIndex].id;
                 
+                // 🚨 턴을 넘길 때도 최신화된 room 정보를 넘깁니다.
                 passTurn(room, room.turn);
                 
                 io.to(currentRoom).emit('gameStart', { turn: room.turn });
                 io.to(currentRoom).emit('systemMsg', "전투 시작! 선공을 확인하세요.");
             } else {
+                // 🚨 기동 완료 후 턴은 유지하되, 전체 데이터를 리프레시합니다.
                 io.to(currentRoom).emit('gameStart', { turn: room.turn });
-                io.to(currentRoom).emit('systemMsg', "전술 기동 완료! 전투를 재개합니다.");
+                io.to(currentRoom).emit('systemMsg', "전술 기동 완료! 최신 좌표가 적용되었습니다.");
             }
             updateRoomInfo(currentRoom);
         } else {
@@ -130,44 +140,45 @@ io.on('connection', (socket) => {
         }
     });
 
-    // 6. 특수 능력 판정 공격 로직 (🚨 5프레이즈 기동 데이터 즉시 동기화)
+    // 6. 특수 능력 판정 공격 로직 (🚨 대면 모드 및 사선/그림자 방패 완벽 적용)
     socket.on('attack', (data) => {
         const room = rooms[currentRoom];
         if (!room || room.gameState !== 'PLAYING' || room.turn !== socket.id) return;
 
         const { index, type } = data;
-        const attackIndex = index; // 내가 클릭한 칸 (0~199)
-        const attackX = attackIndex % 20; // 내가 클릭한 열 (0~19)
-        
-        // 🎯 상대방 시점의 좌표 (180도 회전)
-        const targetIndex = 199 - attackIndex; 
-        const targetX = targetIndex % 20;
-        const targetY = Math.floor(targetIndex / 20);
+        const attackIndex = index;
+        const targetIndex = 199 - attackIndex; // 🚨 180도 회전 (대면 모드 공식)
 
-        // 🚨 서버 메모리에서 최신 유닛 정보를 가진 플레이어 객체를 새로 가져옴
         const attacker = room.players.find(p => p.id === socket.id);
         const opponent = room.players.find(p => p.id !== socket.id);
 
-        // 🔫 SNIPE (저격) 검증
+        const attackX = attackIndex % 20; 
+        const targetX = targetIndex % 20;
+        const targetY = Math.floor(targetIndex / 20);
+
+        // 🔫 SNIPE (저격) 로직 검증
         if (type === 'SNIPE') {
-            if (attacker.fuel < 1) return socket.emit('systemMsg', "연료가 부족하여 저격할 수 없습니다.");
+            if (attacker.fuel < 1) return socket.emit('systemMsg', "저격 실패: 연료가 1 필요합니다.");
             
-            // 🚨 핵심: 5프레이즈에서 이동되어 서버에 저장된 '최신 units' 배열을 뒤집니다.
+            // 🚨 수정: 내가 클릭한 X열(attackX)에 내 저격수가 있는지 그대로 검사합니다.
+            // 180도 회전은 상대방의 배를 판정할 때만 쓰고, 내 사선은 내 화면 기준이어야 합니다.
+            
+            // 1. 저격수(I) 사선 검증
             const hasLineOfSight = attacker.units.some(u => {
-                if (u.type !== 'I') return false; // 오직 저격수(I)만 체크
-                
+                if (u.type !== 'I') return false; 
                 const isAlive = u.cells.length > (u.hitCells ? u.hitCells.length : 0);
-                // 5프레이즈에서 이동된 '새 좌표(cells)' 중 하나라도 현재 클릭한 열(attackX)과 일치하는가?
-                return isAlive && u.cells.some(c => (c % 20) === attackX);
+                // 내 화면의 attackX열에 저격수가 있는지 확인
+                return isAlive && u.cells.some(c => c % 20 === attackX);
             });
 
-            if (!hasLineOfSight) return socket.emit('systemMsg', "저격 실패: 해당 사선(X열)에 아군 저격수(I)가 없습니다!");
+            if (!hasLineOfSight) return socket.emit('systemMsg', "저격 실패: 아군 ㅡ(I) 블럭의 사선(X열)을 벗어났습니다!");
 
-            // 아군 탱커(T) 오사 방지 (최신 좌표 기준)
+            // 2. 아군 탱커(T) 오사 방지 검증
             const isBlockedByAlly = attacker.units.some(u => {
-                if (u.type !== 'T') return false;
+                if (u.type !== 'T') return false; 
                 const isAlive = u.cells.length > (u.hitCells ? u.hitCells.length : 0);
-                return isAlive && u.cells.some(c => (c % 20) === attackX);
+                // 내 화면의 attackX열을 탱커가 가로막고 있는지 확인
+                return isAlive && u.cells.some(c => c % 20 === attackX); 
             });
 
             if (isBlockedByAlly) return socket.emit('systemMsg', "저격 실패: 아군 ㅜ(T) 블럭에 시야가 가려져 있습니다.");
@@ -180,17 +191,19 @@ io.on('connection', (socket) => {
         let hitType = null;
         let shieldBlocked = false;
 
-        // 🛡️ 상대방 탱커(T) 보호막 판정 (180도 회전 시 상대 전면부는 Y값이 큰 쪽)
+        // 🛡️ 상대방 탱커(T) 블럭의 후방 그림자 보호 검증
         opponent.units.forEach(u => {
             if (u.type === 'T') {
                 const isAlive = u.cells.length > (u.hitCells ? u.hitCells.length : 0);
                 if (isAlive) {
                     const tXs = u.cells.map(c => c % 20);
                     const tYs = u.cells.map(c => Math.floor(c / 20));
-                    const frontY = Math.max(...tYs); // 상대 기준 전면부
+                    const minX = Math.min(...tXs);
+                    const maxX = Math.max(...tXs);
+                    const frontY = Math.min(...tYs); // T블럭의 가장 앞쪽 Y (전면부)
 
-                    // 같은 X열이면서 전면부보다 뒤쪽(Y가 작은 쪽)을 쐈을 때 차단
-                    if (tXs.includes(targetX) && targetY < frontY && !u.cells.includes(targetIndex)) {
+                    // 타겟이 T블럭과 같은 X열이고, 전면부보다 뒤쪽(Y가 큼)이며, T블럭 자체를 맞춘 게 아니라면 막힘!
+                    if (targetX >= minX && targetX <= maxX && targetY > frontY && !u.cells.includes(targetIndex)) {
                         shieldBlocked = true;
                     }
                 }
@@ -198,7 +211,7 @@ io.on('connection', (socket) => {
         });
 
         if (shieldBlocked) {
-            socket.emit('systemMsg', "🛡️ 상대의 ㅜ(T) 블럭 장갑 보호 영역에 가로막혔습니다!");
+            socket.emit('systemMsg', "🛡️ 상대의 ㅜ(T) 블럭 후방 보호 영역에 막혀 빗나갔습니다!");
         } else {
             opponent.units.forEach(unit => {
                 if (unit.cells.includes(targetIndex)) {
@@ -213,37 +226,62 @@ io.on('connection', (socket) => {
                     if (unit.type === 'ㄷ' && unit.hitCells.length === unit.cells.length) {
                         opponent.maxFuel = Math.max(0, opponent.maxFuel - 2);
                         attacker.maxFuel += 1;
-                        io.to(currentRoom).emit('systemMsg', "⚠️ 제조창(ㄷ) 완전 파괴! 연료 시스템 타격!");
+                        io.to(currentRoom).emit('systemMsg', "⚠️ 제조창(ㄷ) 완전 파괴! [공격자 최대연료 +1 / 피해자 -2]");
                     }
+                    
                     if (unit.type === '📦') {
                         opponent.fuel += 2;
+                        io.to(currentRoom).emit('systemMsg', "📦 강철 상자 피격! 상대방이 연료를 2 획득했습니다.");
                         io.to(opponent.id).emit('updateFuel', { current: opponent.fuel, max: opponent.maxFuel });
                     }
                 }
             });
         }
 
-        // 결과 통보 및 턴 전환
         if (hitResult) {
+            // 1. 먼저 전멸 여부 확인
             const allDestroyed = opponent.units.every(u => u.type === '📦' || u.cells.length === (u.hitCells ? u.hitCells.length : 0));
+            
             if (allDestroyed) {
+                // 게임 종료 시
                 io.to(currentRoom).emit('attackResult', { attacker: socket.id, attackIndex, targetIndex, hit: true });
                 room.gameState = 'ENDED';
                 io.to(currentRoom).emit('gameOver', { winner: userName });
             } else if (hitType === 'T') {
-                io.to(currentRoom).emit('systemMsg', "🛡️ ㅜ(T) 블럭 타격: 추가 공격 기회 소멸!");
+                // 🛡️ T 블록을 맞췄을 때 (적중했지만 턴 뺏김)
+                io.to(currentRoom).emit('systemMsg', "🛡️ ㅜ(T) 블럭 타격: 단단한 장갑에 튕겨 추가 공격 기회가 소멸되었습니다!");
                 passTurn(room, opponent.id);
-                io.to(currentRoom).emit('attackResult', { attacker: socket.id, attackIndex, targetIndex, hit: true, nextTurn: opponent.id });
+                
+                // 신호는 여기서 "딱 한 번"만 보냅니다.
+                io.to(currentRoom).emit('attackResult', { 
+                    attacker: socket.id, 
+                    attackIndex, 
+                    targetIndex, 
+                    hit: true, 
+                    nextTurn: opponent.id 
+                });
             } else {
+                // 일반 적중 시 (턴 유지)
                 io.to(currentRoom).emit('attackResult', { attacker: socket.id, attackIndex, targetIndex, hit: true });
             }
         } else {
+            // 불발 또는 방패 막힘 시 (턴 넘어감)
             room.phraseCount++;
-            io.to(currentRoom).emit('attackResult', { attacker: socket.id, attackIndex, targetIndex, hit: false, blocked: shieldBlocked, nextTurn: opponent.id });
+            io.to(currentRoom).emit('attackResult', { 
+                attacker: socket.id, 
+                attackIndex, 
+                targetIndex, 
+                hit: false, 
+                blocked: shieldBlocked, 
+                nextTurn: opponent.id 
+            });
             passTurn(room, opponent.id);
+
+            // 5프레이즈 재배치 로직
             if (room.phraseCount > 0 && room.phraseCount % 5 === 0) {
                 room.gameState = 'MOVING';
                 io.to(currentRoom).emit('startMoving');
+                io.to(currentRoom).emit('systemMsg', "⚠️ 5프레이즈 도달! 본대 유닛을 재배치하세요.");
             }
         }
     });
