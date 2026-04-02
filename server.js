@@ -113,8 +113,15 @@ io.on('connection', (socket) => {
             room.players.forEach(p => p.placed = false);
 
             if (prevState === 'PLACING') {
+                // 🚨 [추가됨] 최초 시작 시 양측 연료 8통 세팅
+                room.players.forEach(p => { p.maxFuel = 8; p.fuel = 8; });
+                
                 const turnIndex = Math.floor(Math.random() * 2);
                 room.turn = room.players[turnIndex].id;
+                
+                // 🚨 [추가됨] 선공자에게 턴을 넘기며 첫 유지비 차감 (방금 파트1에서 만든 함수 사용!)
+                passTurn(room, room.turn);
+                
                 io.to(currentRoom).emit('gameStart', { turn: room.turn });
                 io.to(currentRoom).emit('systemMsg', "전투 시작! 선공을 확인하세요.");
             } else {
@@ -127,42 +134,142 @@ io.on('connection', (socket) => {
         }
     });
 
-    // 6. 공격 로직
-    socket.on('attack', (index) => {
+    // 6. 특수 능력 판정 공격 로직
+    socket.on('attack', (data) => {
         const room = rooms[currentRoom];
         if (!room || room.gameState !== 'PLAYING' || room.turn !== socket.id) return;
 
+        const { index, type } = data;
+        const attacker = room.players.find(p => p.id === socket.id);
         const opponent = room.players.find(p => p.id !== socket.id);
+
+        // 🔫 SNIPE (저격) 로직 검증
+        if (type === 'SNIPE') {
+            if (attacker.fuel < 1) return socket.emit('systemMsg', "저격 실패: 연료가 1 필요합니다.");
+            
+            const targetX = index % 20;
+            const isBlocked = attacker.units.some(u => {
+                if (u.type !== 'ㅜ') return false;
+                const isAlive = u.cells.length > (u.hitCells ? u.hitCells.length : 0);
+                return isAlive && u.cells.some(c => c % 20 === targetX); // 같은 열에 살아있는지
+            });
+            if (isBlocked) return socket.emit('systemMsg', "저격 실패: 아군 ㅜ 블럭에 시야가 가려져 있습니다.");
+            
+            attacker.fuel -= 1; 
+            socket.emit('updateFuel', { current: attacker.fuel, max: attacker.maxFuel });
+        }
+
         let hitResult = false;
+        let hitType = null;
+        let shieldBlocked = false;
 
         opponent.units.forEach(unit => {
             if (unit.cells.includes(index)) {
+                // 🛡️ ㅜ 블럭 방패 판정 (cells[1]이 볼록 튀어나온 전면부임)
+                if (unit.type === 'ㅜ') {
+                    const shieldIdx = unit.cells[1];
+                    const shieldDestroyed = unit.hitCells && unit.hitCells.includes(shieldIdx);
+                    if (index !== shieldIdx && !shieldDestroyed) {
+                        shieldBlocked = true; // 전면부가 멀쩡한데 후방을 때렸으므로 무효화!
+                        return; 
+                    }
+                }
+
                 if (!unit.hitCells) unit.hitCells = [];
                 if (!unit.hitCells.includes(index)) {
                     unit.hitCells.push(index);
                     unit.isHit = true;
                 }
                 hitResult = true;
+                hitType = unit.type;
+
+                // 💥 ㄷ 블럭 전손 패널티 (연료통 파괴)
+                if (unit.type === 'ㄷ' && unit.hitCells.length === unit.cells.length) {
+                    opponent.maxFuel = Math.max(0, opponent.maxFuel - 2);
+                    attacker.maxFuel += 1;
+                    io.to(currentRoom).emit('systemMsg', "⚠️ 제조창(ㄷ) 완전 파괴! [공격자 최대연료 +1 / 피해자 -2]");
+                }
+                
+                // 📦 강철 상자 피격 이벤트
+                if (unit.type === '📦') {
+                    opponent.fuel += 2;
+                    io.to(currentRoom).emit('systemMsg', "📦 강철 상자 피격! 상대방이 연료를 2 획득했습니다.");
+                    io.to(opponent.id).emit('updateFuel', { current: opponent.fuel, max: opponent.maxFuel });
+                }
             }
         });
 
+        if (shieldBlocked) {
+            socket.emit('systemMsg', "🛡️ 상대의 ㅜ 블럭 전면 장갑에 막혀 데미지를 주지 못했습니다!");
+            hitResult = false; // 빗나감 처리
+        }
+
         if (hitResult) {
             io.to(currentRoom).emit('attackResult', { attacker: socket.id, index, hit: true });
-            const allDestroyed = opponent.units.every(u => u.cells.length === (u.hitCells ? u.hitCells.length : 0));
+            
+            // 📦 상자는 전멸 판정에서 제외!
+            const allDestroyed = opponent.units.every(u => u.type === '📦' || u.cells.length === (u.hitCells ? u.hitCells.length : 0));
             if (allDestroyed) {
                 room.gameState = 'ENDED';
                 io.to(currentRoom).emit('gameOver', { winner: userName });
+            } else {
+                // 🛡️ ㅜ 블럭 타격 시 추가 턴 뺏김
+                if (hitType === 'ㅜ') {
+                    io.to(currentRoom).emit('systemMsg', "🛡️ ㅜ 블럭 타격: 단단한 장갑에 튕겨 추가 공격 기회가 소멸되었습니다!");
+                    passTurn(room, opponent.id);
+                }
             }
         } else {
-            room.turn = opponent.id;
             room.phraseCount++;
-            io.to(currentRoom).emit('attackResult', { attacker: socket.id, index, hit: false, nextTurn: room.turn });
+            io.to(currentRoom).emit('attackResult', { attacker: socket.id, index, hit: false, nextTurn: opponent.id }); // UI 갱신용
+            passTurn(room, opponent.id); // 턴 넘기며 유지비 차감
 
+            // 5프레이즈 본대 재배치
             if (room.phraseCount > 0 && room.phraseCount % 5 === 0) {
                 room.gameState = 'MOVING';
                 io.to(currentRoom).emit('startMoving');
-                io.to(currentRoom).emit('systemMsg', "⚠️ 5프레이즈 도달! 피격되지 않은 유닛을 재배치하세요.");
+                io.to(currentRoom).emit('systemMsg', "⚠️ 5프레이즈 도달! 본대 유닛을 재배치하세요.");
             }
+        }
+    });
+
+    // 🚨 기동함선(1x1) 이동 엔진
+    socket.on('move1x1', (data) => {
+        const room = rooms[currentRoom];
+        if (!room || room.gameState !== 'PLAYING' || room.turn !== socket.id) return;
+        
+        const { from, to } = data;
+        const player = room.players.find(p => p.id === socket.id);
+        const opponent = room.players.find(p => p.id !== socket.id);
+        
+        if (player.fuel < 2) return socket.emit('systemMsg', "기동 실패: 연료가 2 필요합니다.");
+
+        // 🚶 8방향 인접 거리 수학적 검증
+        const fromX = from % 20, fromY = Math.floor(from / 20);
+        const toX = to % 20, toY = Math.floor(to / 20);
+        if (Math.abs(fromX - toX) > 1 || Math.abs(fromY - toY) > 1) {
+            return socket.emit('systemMsg', "기동 실패: 인접한 1칸(대각선 포함 8방향)으로만 이동 가능합니다.");
+        }
+
+        const unit = player.units.find(u => u.type === '1x1' && u.cells.includes(from) && !u.isHit);
+        if (!unit) return;
+
+        // 서버쪽 이동 처리 및 연료 차감
+        unit.cells = [to];
+        player.fuel -= 2;
+        socket.emit('updateFuel', { current: player.fuel, max: player.maxFuel });
+        socket.emit('syncMovedUnit', { oldIdx: from, newIdx: to }); // 클라이언트 시각 동기화
+        socket.emit('systemMsg', "🏃 1x1 기동함선 이동 완료. (-2⛽)");
+
+        // 📡 레이더(L) 발각 판정 로직
+        const isSpotted = opponent.units.some(u => {
+            if (u.type !== 'L') return false;
+            const isAlive = u.cells.length > (u.hitCells ? u.hitCells.length : 0);
+            return isAlive && u.cells.some(c => c % 20 === toX); // 같은 X열 진입 시
+        });
+
+        if (isSpotted) {
+            io.to(currentRoom).emit('systemMsg', "📡 [레이더 경보] 적 기동함선의 움직임이 포착되었습니다!");
         }
     });
 
@@ -222,6 +329,21 @@ io.on('connection', (socket) => {
             updateRoomInfo(currentRoom);
         }
     });
+
+    // 🚨 [신규] 유지비 차감 및 턴 넘기기 유틸 함수
+    function passTurn(room, nextTurnId) {
+        room.turn = nextTurnId;
+        const nextPlayer = room.players.find(p => p.id === nextTurnId);
+        if (nextPlayer) {
+            // 📦 강철 상자를 제외하고 살아있는 함선 수 계산
+            const aliveShips = nextPlayer.units.filter(u => u.type !== '📦' && u.cells.length > (u.hitCells ? u.hitCells.length : 0)).length;
+            nextPlayer.fuel -= aliveShips; 
+            if (nextPlayer.fuel < 0) nextPlayer.fuel = 0; 
+            
+            io.to(nextTurnId).emit('updateFuel', { current: nextPlayer.fuel, max: nextPlayer.maxFuel });
+            io.to(nextTurnId).emit('systemMsg', `🔥 내 턴 시작! (유지비: ⛽ -${aliveShips})`);
+        }
+    }
 
     function updateRoomInfo(roomCode) {
         if (rooms[roomCode]) {
