@@ -374,8 +374,8 @@
                     renderMyGrid(); 
                 }
                 
-            } else if (txt === "재대결 신청") {
-                socket.emit('requestRematch');
+            } else if (txt === "게임 종료") {
+                socket.emit('requestRematch'); // 서버에 초기화 요청
             }
         }
 
@@ -471,12 +471,31 @@
         socket.on('gameOver', data => {
             gameStatus = "ENDED";
             const btn = document.getElementById('start-btn');
-            btn.disabled = false; btn.innerText = "재대결 신청"; btn.style.background = "#8e44ad";
+            btn.disabled = false; btn.innerText = "게임 종료"; btn.style.background = "#8e44ad";
             addGameLog("[시스템] 게임 종료! 승자: " + data.winner);
             alert("게임 종료! 승자: " + data.winner);
         });
 
-        socket.on('rematchStarted', () => { location.reload(); });
+        socket.on('rematchStarted', () => { 
+            // 🚨 무식한 location.reload() 삭제 완료! 
+            // 대신 화면의 데이터만 빗자루로 싹 쓸어냅니다.
+            myUnits = [];
+            isMyTurn = false;
+            gameStatus = "LOBBY";
+            selectedUnitType = null;
+            movingOriginalState = null;
+            inventory = { 'ㄷ':1, 'L':1, 'T':1, 'ㅗ':1, 'I':1, '1x1':1, '1x2':1 };
+            
+            initGrids(); // 양쪽 격자판 HTML 싹 지우고 새로 그리기
+            renderInventory(); // 인벤토리 리셋
+            
+            const btn = document.getElementById('start-btn');
+            btn.innerText = "준비하기"; 
+            btn.style.background = "#4CAF50";
+            btn.disabled = false;
+            
+            addGameLog("[시스템] 게임이 종료되었습니다. 모든 인원이 관전자로 이동합니다.");
+        });
         socket.on('systemMsg', msg => addGameLog("[시스템] " + msg));
         
         function sendChat() {
