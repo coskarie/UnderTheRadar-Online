@@ -22,6 +22,8 @@
         .grid div { border: 0.1px solid #555; cursor: pointer; box-sizing: border-box; }
         
         .my-unit { background: #2ecc71 !important; border: 1px solid #27ae60 !important; }
+        /* 🚨 강철상자 전용 갈색 추가! */
+        .box-unit { background: #8D6E63 !important; border: 1px solid #5D4037 !important; }
         .hit-unit { background: #e74c3c !important; border: 1px solid #c0392b !important; }
         .miss-cell { background: #95a5a6 !important; }
         
@@ -342,11 +344,18 @@
             myUnits.forEach(u => {
                 u.cells.forEach(c => {
                     if(c < 0 || c >= 200) return;
-                    cells[c].classList.add('my-unit');
+                    
+                    // 🚨 강철상자(📦)면 갈색 클래스, 아니면 초록색 클래스 부여!
+                    if (u.type === '📦') {
+                        cells[c].classList.add('box-unit');
+                    } else {
+                        cells[c].classList.add('my-unit');
+                    }
+                    
                     if(u.isHit) cells[c].style.opacity = "0.6";
                     if(u.hitCells && u.hitCells.includes(c)) cells[c].classList.add('hit-unit');
                     
-                    // 🚨 추가된 1줄: 기동 모드에서 선택된 1x1 유닛을 예쁘게 빛나게 만듦
+                    // 🚨 기동 모드에서 선택된 1x1 유닛을 예쁘게 빛나게 만듦
                     if (c === selected1x1Idx) cells[c].classList.add('moving-1x1');
                 });
             });
