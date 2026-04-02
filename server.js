@@ -156,19 +156,19 @@ io.on('connection', (socket) => {
         const targetX = targetIndex % 20;
         const targetY = Math.floor(targetIndex / 20);
 
-        // 🔫 SNIPE (저격) 로직 검증 (🚨 거울 변환 완벽 적용)
+        // 🔫 SNIPE (저격) 로직 검증
         if (type === 'SNIPE') {
             if (attacker.fuel < 1) return socket.emit('systemMsg', "저격 실패: 연료가 1 필요합니다.");
             
-            // 🎯 핵심 수정: 내 화면에서 클릭한 attackX는 내 진영 기준 (19 - attackX)열입니다!
-            const mySideX = 19 - attackX; 
-
+            // 🚨 수정: 내가 클릭한 X열(attackX)에 내 저격수가 있는지 그대로 검사합니다.
+            // 180도 회전은 상대방의 배를 판정할 때만 쓰고, 내 사선은 내 화면 기준이어야 합니다.
+            
             // 1. 저격수(I) 사선 검증
             const hasLineOfSight = attacker.units.some(u => {
                 if (u.type !== 'I') return false; 
                 const isAlive = u.cells.length > (u.hitCells ? u.hitCells.length : 0);
-                // 🔧 내 진영 기준 사선(mySideX)과 저격수 위치 비교
-                return isAlive && u.cells.some(c => c % 20 === mySideX);
+                // 내 화면의 attackX열에 저격수가 있는지 확인
+                return isAlive && u.cells.some(c => c % 20 === attackX);
             });
 
             if (!hasLineOfSight) return socket.emit('systemMsg', "저격 실패: 아군 ㅡ(I) 블럭의 사선(X열)을 벗어났습니다!");
@@ -177,8 +177,8 @@ io.on('connection', (socket) => {
             const isBlockedByAlly = attacker.units.some(u => {
                 if (u.type !== 'T') return false; 
                 const isAlive = u.cells.length > (u.hitCells ? u.hitCells.length : 0);
-                // 🔧 아군 탱커도 내 진영 기준 사선(mySideX)을 가로막는지 확인
-                return isAlive && u.cells.some(c => c % 20 === mySideX); 
+                // 내 화면의 attackX열을 탱커가 가로막고 있는지 확인
+                return isAlive && u.cells.some(c => c % 20 === attackX); 
             });
 
             if (isBlockedByAlly) return socket.emit('systemMsg', "저격 실패: 아군 ㅜ(T) 블럭에 시야가 가려져 있습니다.");
