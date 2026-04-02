@@ -221,24 +221,45 @@ io.on('connection', (socket) => {
         }
 
         if (hitResult) {
-            io.to(currentRoom).emit('attackResult', { attacker: socket.id, attackIndex, targetIndex, hit: true });
-            
+            // 1. 먼저 전멸 여부 확인
             const allDestroyed = opponent.units.every(u => u.type === '📦' || u.cells.length === (u.hitCells ? u.hitCells.length : 0));
+            
             if (allDestroyed) {
+                // 게임 종료 시
+                io.to(currentRoom).emit('attackResult', { attacker: socket.id, attackIndex, targetIndex, hit: true });
                 room.gameState = 'ENDED';
                 io.to(currentRoom).emit('gameOver', { winner: userName });
+            } else if (hitType === 'T') {
+                // 🛡️ T 블록을 맞췄을 때 (적중했지만 턴 뺏김)
+                io.to(currentRoom).emit('systemMsg', "🛡️ ㅜ(T) 블럭 타격: 단단한 장갑에 튕겨 추가 공격 기회가 소멸되었습니다!");
+                passTurn(room, opponent.id);
+                
+                // 신호는 여기서 "딱 한 번"만 보냅니다.
+                io.to(currentRoom).emit('attackResult', { 
+                    attacker: socket.id, 
+                    attackIndex, 
+                    targetIndex, 
+                    hit: true, 
+                    nextTurn: opponent.id 
+                });
             } else {
-                if (hitType === 'T') {
-                    io.to(currentRoom).emit('systemMsg', "🛡️ ㅜ(T) 블럭 타격: 단단한 장갑에 튕겨 추가 공격 기회가 소멸되었습니다!");
-                    passTurn(room, opponent.id);
-                }
+                // 일반 적중 시 (턴 유지)
+                io.to(currentRoom).emit('attackResult', { attacker: socket.id, attackIndex, targetIndex, hit: true });
             }
         } else {
+            // 불발 또는 방패 막힘 시 (턴 넘어감)
             room.phraseCount++;
-            // 🚨 blocked: shieldBlocked 여부를 프론트로 같이 쏴줌!
-            io.to(currentRoom).emit('attackResult', { attacker: socket.id, attackIndex, targetIndex, hit: false, blocked: shieldBlocked, nextTurn: opponent.id });
+            io.to(currentRoom).emit('attackResult', { 
+                attacker: socket.id, 
+                attackIndex, 
+                targetIndex, 
+                hit: false, 
+                blocked: shieldBlocked, 
+                nextTurn: opponent.id 
+            });
             passTurn(room, opponent.id);
 
+            // 5프레이즈 재배치 로직
             if (room.phraseCount > 0 && room.phraseCount % 5 === 0) {
                 room.gameState = 'MOVING';
                 io.to(currentRoom).emit('startMoving');
