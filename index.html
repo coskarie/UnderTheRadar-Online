@@ -523,16 +523,12 @@
 
         socket.on('attackResult', data => {
             if (data.attacker === socket.id) {
-                // 1. 내가 공격했을 때: 막힌 게 아닐 때만 색칠함!
-                if (!data.blocked) {
-                    document.getElementById('opponent-grid').children[data.attackIndex].classList.add(data.hit ? 'hit-unit' : 'miss-cell');
-                }
-                addGameLog(`내 공격: ${data.hit ? "💥 적중!" : (data.blocked ? "🛡️ 떡장갑에 막힘!" : "🌊 불발")}`);
+                // 1. 내가 공격했을 때: 내 상대방 격자판(내가 클릭한 그대로의 attackIndex)에 색칠
+                document.getElementById('opponent-grid').children[data.attackIndex].classList.add(data.hit ? 'hit-unit' : 'miss-cell');
+                addGameLog(`내 공격: ${data.hit ? "💥 적중!" : "🌊 불발"}`);
             } else {
-                // 2. 내가 방어할 때: 막힌 게 아닐 때만 피격 판정
-                if (!data.blocked) {
-                    document.getElementById('my-grid').children[data.targetIndex].classList.add(data.hit ? 'hit-unit' : 'miss-cell');
-                }
+                // 2. 내가 방어할 때: 내 진영 격자판(서버가 거울처럼 뒤집어준 targetIndex)에 피격 판정
+                document.getElementById('my-grid').children[data.targetIndex].classList.add(data.hit ? 'hit-unit' : 'miss-cell');
                 
                 if (data.hit) {
                     myUnits.forEach(u => {
@@ -546,7 +542,7 @@
                     });
                     renderMyGrid(); 
                 }
-                addGameLog(`상대 공격: ${data.hit ? "💥 적중!" : (data.blocked ? "🛡️ 떡장갑에 막아냄!" : "🌊 불발")}`);
+                addGameLog(`상대 공격: ${data.hit ? "💥 적중!" : "🌊 불발"}`);
             }
             
             if(!data.hit) updateTurn(data.nextTurn);
