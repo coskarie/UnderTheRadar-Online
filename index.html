@@ -21,25 +21,25 @@
             z-index: 1000; 
         }
         #main-game { display: none; flex: 1; padding: 10px; gap: 15px; overflow-y: auto; }
-
-        /* 좌측 게임칸*/
-        .left-panel { 
-            flex: 2; 
-            display: flex; 
-            flex-direction: column; 
-            gap: 5px; 
-            
-            /* 🚨 여기에 왼쪽 창 전체 배경 이미지 적용! */
-            background: url('Game_Grid.png') no-repeat center center;
-            background-size: 100% 100%; /* 왼쪽 창 크기에 딱 맞게 조절 */
-            padding: 15px; /* 배경이랑 격자가 너무 붙지 않게 여백 추가 */
-            border-radius: 10px;
-        }
-
-        /* 우측 로그 및 채팅창*/
-        .right-panel { flex: 1; display: flex; flex-direction: column; gap: 10px; min-width: 250px; }
         
-
+        /* 🚨 레이아웃 조정: 좌우 패널 간격 늘리고, 오른쪽 패널 최소 너비 설정 */
+        .left-panel { flex: 2; display: flex; flex-direction: column; gap: 5px; } 
+        .game-board-wrapper {
+            /* 1. 배경 이미지 경로 */
+            background: url('Game_Grid.png') no-repeat center center;
+            
+            /* 2. 이미지를 상자 크기에 100% 딱 맞추기 (이게 영점 조절의 핵심) */
+            background-size: 100% 100%;
+            
+            /* 3. 상자 안쪽 내용물들이 벽에 너무 붙지 않게 여백 주기 */
+            padding: 10px;
+            
+            /* 4. 위아래 요소들이 예쁘게 배치되도록 설정 */
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+        .right-panel { flex: 1; display: flex; flex-direction: column; gap: 10px; min-width: 250px; }
         
         .name-label { font-size: 1.1em; font-weight: bold; display: flex; align-items: center; gap: 8px; margin: 2px 0; }
         .v-mark { color: #4CAF50; font-weight: 900; display: none; }
@@ -95,7 +95,7 @@
     </style>
 </head>
 <body>
-
+    
     <div id="login-screen">
         <h1>전술 기동 블록 찾기</h1>
         <div style="margin-bottom: 10px; display: flex; flex-direction: column; gap: 5px;">
@@ -104,27 +104,29 @@
         </div>
         <button onclick="joinGame()" style="padding: 12px 30px; background:#2ecc71; color:white; border:none; font-size: 1.1em;">입장하기</button>
     </div>
-
-    <div id="main-game">
+   
+    <div id="main-game"> 
         <div class="left-panel">
-            <div class="name-label">상대: <span id="opp-name">대기 중</span> <span id="opp-v" class="v-mark">[V]</span></div>
-            <div id="opponent-grid" class="grid"></div>
-            
-            <div id="unit-inventory" class="inventory"></div>
-            
-            <div class="ctrl-group">
-                <button id="start-btn" onclick="handleButtonClick()">준비하기</button>
-                <button class="sub-btn" style="background:#e67e22;" onclick="resetPlacement()">초기화 🧹</button>
-            </div>
-            
-            <div class="name-label">나: <span id="my-name-display">-</span> <span id="my-v" class="v-mark">[V]</span></div>
-            <div id="fuel-display">⛽ 연료: <span id="current-fuel">8</span> / <span id="max-fuel">8</span></div>
-            <div id="action-panel" class="action-panel">
-                <button id="btn-ATTACK" class="action-btn active" onclick="setActionMode('ATTACK')">🎯 타격</button>
-                <button id="btn-SNIPE" class="action-btn" onclick="setActionMode('SNIPE')">🔫 저격 (-1⛽)</button>
-                <button id="btn-MOVE" class="action-btn" onclick="setActionMode('MOVE')">🏃 기동 (-2⛽)</button>
-            </div>
-            <div id="my-grid" class="grid" onmouseleave="clearGhost()"></div>
+            <div class="game-board-wrapper"></div>
+                <div class="name-label">상대: <span id="opp-name">대기 중</span> <span id="opp-v" class="v-mark">[V]</span></div>
+                <div id="opponent-grid" class="grid"></div>
+                
+                <div id="unit-inventory" class="inventory"></div>
+                
+                <div class="ctrl-group">
+                    <button id="start-btn" onclick="handleButtonClick()">준비하기</button>
+                    <button class="sub-btn" style="background:#e67e22;" onclick="resetPlacement()">초기화 🧹</button>
+                </div>
+                
+                <div class="name-label">나: <span id="my-name-display">-</span> <span id="my-v" class="v-mark">[V]</span></div>
+                <div id="fuel-display">⛽ 연료: <span id="current-fuel">8</span> / <span id="max-fuel">8</span></div>
+                <div id="action-panel" class="action-panel">
+                    <button id="btn-ATTACK" class="action-btn active" onclick="setActionMode('ATTACK')">🎯 타격</button>
+                    <button id="btn-SNIPE" class="action-btn" onclick="setActionMode('SNIPE')">🔫 저격 (-1⛽)</button>
+                    <button id="btn-MOVE" class="action-btn" onclick="setActionMode('MOVE')">🏃 기동 (-2⛽)</button>
+                </div>
+                <div id="my-grid" class="grid" onmouseleave="clearGhost()"></div>
+            <div>
             <div id="phrase-display" style="font-size: 1.05em; font-weight: bold; color: #34495e; margin-top: 5px; margin-left: 5px;">[ 1 프레이즈 ]</div>
         </div>
 
