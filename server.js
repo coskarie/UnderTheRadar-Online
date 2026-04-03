@@ -93,7 +93,7 @@ io.on('connection', (socket) => {
         }
     });
 
-    // 5. 배치 및 전술 기동 확정 로직
+    // 5. 배치 및 전술 기동 확정 로직 (🚨 수신 데이터 확인 로그 추가)
     socket.on('finishPlacing', (units) => {
         const room = rooms[currentRoom];
         
@@ -101,8 +101,13 @@ io.on('connection', (socket) => {
         
         const player = room.players.find(p => p.id === socket.id);
         if (player) {
+            // 클라이언트가 보낸 데이터로 덮어쓰기
             player.units = units;
             player.placed = true;
+            
+            // 🚨 [CCTV 1] 확정 버튼을 눌렀을 때 서버가 받은 저격수 좌표 확인!
+            const sniper = units.find(u => u.type === 'I');
+            console.log(`[데이터 수신] ${player.name} 확정. 서버가 저장한 저격수(I) 좌표:`, sniper ? sniper.cells : "없음");
         }
 
         if (room.players.length === 2 && room.players.every(p => p.placed)) {
@@ -112,12 +117,9 @@ io.on('connection', (socket) => {
 
             if (prevState === 'PLACING') {
                 room.players.forEach(p => { p.maxFuel = 8; p.fuel = 8; });
-                
                 const turnIndex = Math.floor(Math.random() * 2);
                 room.turn = room.players[turnIndex].id;
-                
                 passTurn(room, room.turn);
-                
                 io.to(currentRoom).emit('gameStart', { turn: room.turn });
                 io.to(currentRoom).emit('systemMsg', "전투 시작! 선공을 확인하세요.");
             } else {
@@ -130,14 +132,14 @@ io.on('connection', (socket) => {
         }
     });
 
-    // 6. 특수 능력 판정 공격 로직 (🚨 대면 모드 및 사선/그림자 방패 완벽 적용)
+    // 6. 특수 능력 판정 공격 로직
     socket.on('attack', (data) => {
         const room = rooms[currentRoom];
         if (!room || room.gameState !== 'PLAYING' || room.turn !== socket.id) return;
 
         const { index, type } = data;
         const attackIndex = index;
-        const targetIndex = 199 - attackIndex; // 🚨 180도 회전 (대면 모드 공식)
+        const targetIndex = 199 - attackIndex; 
 
         const attacker = room.players.find(p => p.id === socket.id);
         const opponent = room.players.find(p => p.id !== socket.id);
@@ -150,30 +152,39 @@ io.on('connection', (socket) => {
         if (type === 'SNIPE') {
             if (attacker.fuel < 1) return socket.emit('systemMsg', "저격 실패: 연료가 1 필요합니다.");
             
-            // 🚨 저격 사선 검증: 내 ㅡ(I) 블럭이 위치한 X열에만 쏠 수 있음
+            // 🚨 [CCTV 2] 저격 버튼 누른 순간 서버가 판단하는 사선과 현재 좌표 비교!
+            const currentSniper = attacker.units.find(u => u.type === 'I');
+            console.log(`[저격 시도] ${attacker.name}이(가) 클릭한 사선(attackX): ${attackX}`);
+            console.log(`[저격 시도] 서버 메모리에 박혀있는 저격수(I)의 X열들:`, currentSniper ? currentSniper.cells.map(c => c % 20) : "없음");
+
             const hasLineOfSight = attacker.units.some(u => {
                 if (u.type !== 'I') return false; 
                 const isAlive = u.cells.length > (u.hitCells ? u.hitCells.length : 0);
                 return isAlive && u.cells.some(c => c % 20 === attackX);
             });
-            if (!hasLineOfSight) return socket.emit('systemMsg', "저격 실패: 아군 ㅡ(I) 블럭의 사선(X열)을 벗어났습니다!");
+
+            if (!hasLineOfSight) {
+                console.log(`❌ 사선 불일치로 저격 실패 판정됨.`);
+                return socket.emit('systemMsg', "저격 실패: 아군 ㅡ(I) 블럭의 사선(X열)을 벗어났습니다!");
+            }
 
             const isBlockedByAlly = attacker.units.some(u => {
                 if (u.type !== 'T') return false; 
                 const isAlive = u.cells.length > (u.hitCells ? u.hitCells.length : 0);
                 return isAlive && u.cells.some(c => c % 20 === attackX); 
             });
+
             if (isBlockedByAlly) return socket.emit('systemMsg', "저격 실패: 아군 ㅜ(T) 블럭에 시야가 가려져 있습니다.");
             
             attacker.fuel -= 1; 
             socket.emit('updateFuel', { current: attacker.fuel, max: attacker.maxFuel });
         }
 
+        // ... (아래 쉴드 및 타격 판정 로직은 기존과 동일하므로 생략 없이 그대로 유지)
         let hitResult = false;
         let hitType = null;
         let shieldBlocked = false;
 
-        // 🛡️ 상대방 탱커(T) 블럭의 후방 그림자 보호 검증
         opponent.units.forEach(u => {
             if (u.type === 'T') {
                 const isAlive = u.cells.length > (u.hitCells ? u.hitCells.length : 0);
@@ -182,9 +193,8 @@ io.on('connection', (socket) => {
                     const tYs = u.cells.map(c => Math.floor(c / 20));
                     const minX = Math.min(...tXs);
                     const maxX = Math.max(...tXs);
-                    const frontY = Math.min(...tYs); // T블럭의 가장 앞쪽 Y (전면부)
+                    const frontY = Math.min(...tYs); 
 
-                    // 타겟이 T블럭과 같은 X열이고, 전면부보다 뒤쪽(Y가 큼)이며, T블럭 자체를 맞춘 게 아니라면 막힘!
                     if (targetX >= minX && targetX <= maxX && targetY > frontY && !u.cells.includes(targetIndex)) {
                         shieldBlocked = true;
                     }
@@ -235,7 +245,6 @@ io.on('connection', (socket) => {
             }
         } else {
             room.phraseCount++;
-            // 🚨 blocked: shieldBlocked 여부를 프론트로 같이 쏴줌!
             io.to(currentRoom).emit('attackResult', { attacker: socket.id, attackIndex, targetIndex, hit: false, blocked: shieldBlocked, nextTurn: opponent.id });
             passTurn(room, opponent.id);
 
