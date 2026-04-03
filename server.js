@@ -149,6 +149,10 @@ io.on('connection', (socket) => {
                 passTurn(room, room.turn);
                 io.to(currentRoom).emit('gameStart', { turn: room.turn });
                 io.to(currentRoom).emit('systemMsg', "전투 시작! 선공을 확인하세요.");
+
+                // 🚨 게임 시작 시 1프레이즈로 표시!
+                io.to(currentRoom).emit('updatePhrase', 1); 
+                io.to(currentRoom).emit('systemMsg', "전투 시작! 선공을 확인하세요.");
             } else {
                 io.to(currentRoom).emit('gameStart', { turn: room.turn });
                 io.to(currentRoom).emit('systemMsg', "전술 기동 완료! 전투를 재개합니다.");
@@ -311,11 +315,15 @@ io.on('connection', (socket) => {
                 io.to(currentRoom).emit('attackResult', { attacker: socket.id, attackIndex, targetIndex, hit: false, blocked: shieldBlocked, nextTurn: opponent.id });
                 passTurn(room, opponent.id); // 일반 공격이 빗나갔을 때만 턴 넘김
 
-                // 프레이즈 체크는 일반 턴이 넘어갈 때만 카운트되도록 조정
-                if (room.phraseCount > 0 && room.phraseCount % 5 === 0) {
+                // 🚨 서로 한 번씩(2번) 빗나갈 때마다 1프레이즈씩 증가!
+                const currentPhrase = Math.floor(room.phraseCount / 2) + 1;
+                io.to(currentRoom).emit('updatePhrase', currentPhrase);
+
+                // 프레이즈 체크 (10번 빗나가면 = 5왕복 = 5프레이즈 완료 시 기동)
+                if (room.phraseCount > 0 && room.phraseCount % 10 === 0) {
                     room.gameState = 'MOVING';
                     io.to(currentRoom).emit('startMoving');
-                    io.to(currentRoom).emit('systemMsg', "⚠️ 5프레이즈 도달! 본대 유닛을 재배치하세요.");
+                    io.to(currentRoom).emit('systemMsg', "⚠️ 5프레이즈(10턴) 도달! 본대 유닛을 재배치하세요.");
                 }
             }
         }
