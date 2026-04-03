@@ -556,7 +556,7 @@
                 addGameLog(`상대 공격: ${data.hit ? "💥 적중!" : (data.blocked ? "🛡️ 떡장갑에 막아냄!" : "🌊 불발")}`);
             }
             
-            if(!data.hit) updateTurn(data.nextTurn);
+            if(data.nextTurn) updateTurn(data.nextTurn);
         });
 
         function updateTurn(turnId) {
