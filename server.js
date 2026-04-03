@@ -428,7 +428,14 @@ io.on('connection', (socket) => {
             }
         }
     }
-});
+
+    // 🚨 실수로 날아갔던 함수 부활! 
+    function updateRoomInfo(roomCode) {
+        if (rooms[roomCode]) {
+            io.to(roomCode).emit('roomData', rooms[roomCode]);
+        }
+    }
+}); 
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => console.log(`Tactical Engine Active on port ${PORT}`));
