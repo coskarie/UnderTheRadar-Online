@@ -266,22 +266,27 @@ io.on('connection', (socket) => {
         }
 
         if (hitResult) {
-            io.to(currentRoom).emit('attackResult', { attacker: socket.id, attackIndex, targetIndex, hit: true });
-            
             const allDestroyed = opponent.units.every(u => u.type === '📦' || u.cells.length === (u.hitCells ? u.hitCells.length : 0));
+            
             if (allDestroyed) {
+                // 게임 끝났을 때
+                io.to(currentRoom).emit('attackResult', { attacker: socket.id, attackIndex, targetIndex, hit: true });
                 room.gameState = 'ENDED';
                 io.to(currentRoom).emit('gameOver', { winner: userName });
             } else {
-                if (hitType === 'T') {
-                    // ✅ 수정: 저격(SNIPE)으로 T블럭을 맞췄을 때는 턴이 넘어가지 않음!
-                    if (type === 'SNIPE') {
+                if (hitType === 'T' && type !== 'SNIPE') {
+                    // 🛡️ [일반 공격]으로 T블럭을 맞췄을 때 -> 턴 넘어감!
+                    passTurn(room, opponent.id);
+                    // 🚨 nextTurn: opponent.id 를 확실하게 담아서 보냄
+                    io.to(currentRoom).emit('attackResult', { attacker: socket.id, attackIndex, targetIndex, hit: true, nextTurn: opponent.id });
+                    io.to(currentRoom).emit('systemMsg', "🛡️ ㅜ(T) 블럭 타격: 단단한 장갑에 튕겨 추가 공격 기회가 소멸되었습니다!");
+                } else {
+                    // 🎯 일반 함선을 맞췄거나, [저격]으로 맞췄을 때 -> 턴 유지!
+                    if (hitType === 'T' && type === 'SNIPE') {
                         io.to(currentRoom).emit('systemMsg', "🛡️ ㅜ(T) 블럭 타격! (저격 능력이므로 턴이 유지됩니다.)");
-                        // passTurn 호출 안 함!
-                    } else {
-                        io.to(currentRoom).emit('systemMsg', "🛡️ ㅜ(T) 블럭 타격: 단단한 장갑에 튕겨 추가 공격 기회가 소멸되었습니다!");
-                        passTurn(room, opponent.id); // 일반 공격일 때만 턴 넘김
                     }
+                    // 🚨 nextTurn: socket.id (내 턴 유지) 를 확실하게 담아서 보냄
+                    io.to(currentRoom).emit('attackResult', { attacker: socket.id, attackIndex, targetIndex, hit: true, nextTurn: socket.id });
                 }
             }
         } else {
