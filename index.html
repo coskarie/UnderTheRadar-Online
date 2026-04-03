@@ -30,7 +30,8 @@
 
         .grid { 
             width: 100%; height: 210px; background: #34495e; border: 2px solid #333; 
-            display: grid; grid-template-columns: repeat(20, 1fr); grid-template-rows: repeat(10, 1fr); 
+            /* 🚨 20칸에서 14칸으로 수정 */
+            display: grid; grid-template-columns: repeat(14, 1fr); grid-template-rows: repeat(10, 1fr); 
         }
         .grid div { border: 0.1px solid #555; cursor: pointer; box-sizing: border-box; }
         
@@ -171,7 +172,8 @@
             const oppGrid = document.getElementById('opponent-grid');
             const myGrid = document.getElementById('my-grid');
             oppGrid.innerHTML = ''; myGrid.innerHTML = '';
-            for(let i=0; i<200; i++) {
+            // 🚨 총 칸 수를 200에서 140으로 수정
+            for(let i=0; i<140; i++) {
                 const oCell = document.createElement('div');
                 oCell.onclick = function() { 
                     if(gameStatus === 'PLAYING' && isMyTurn) {
@@ -236,7 +238,7 @@
             // 2. 선택 후 빈칸 클릭 시 서버로 이동 요청 쏘기
             if (selected1x1Idx !== -1) {
                 if (myUnits.some(u => u.cells.includes(idx))) {
-                    alert("다른 유닛이 있는 곳으로는 이동할 수 없습니다!");
+                    alert("다른 유닛이 있는 곳로는 이동할 수 없습니다!");
                     selected1x1Idx = -1; renderMyGrid();
                     return;
                 }
@@ -251,8 +253,9 @@
             const shape = UNIT_SHAPES[type];
             if(!shape) return [];
 
-            const pcol = pivotIdx % 20;       
-            const prow = Math.floor(pivotIdx / 20); 
+            // 🚨 가로 칸 수를 20에서 14로 수정
+            const pcol = pivotIdx % 14;       
+            const prow = Math.floor(pivotIdx / 14); 
 
             const minC = Math.min(...shape.map(o => o[0]));
             const minR = Math.min(...shape.map(o => o[1]));
@@ -260,8 +263,9 @@
             return shape.map(([c, r]) => {
                 const fc = pcol + (c - minC);
                 const fr = prow + (r - minR);
-                if(fc < 0 || fc >= 20 || fr < 0 || fr >= 10) return -1;
-                return fr * 20 + fc;
+                // 🚨 가로 칸 수 범위를 20에서 14로 수정
+                if(fc < 0 || fc >= 14 || fr < 0 || fr >= 10) return -1;
+                return fr * 14 + fc;
             });
         }
 
@@ -354,7 +358,8 @@
 
         function renderMyGrid() {
             const cells = document.getElementById('my-grid').children;
-            for(let i=0; i<200; i++) {
+            // 🚨 총 칸 수를 200에서 140으로 수정
+            for(let i=0; i<140; i++) {
                 cells[i].className = '';
                 cells[i].style.opacity = "1";
             }
@@ -362,13 +367,15 @@
             // 확정 버튼을 눌러서 movingOriginalState가 null이 되면, 이 조건문을 알아서 건너뛰면서 흰색 껍데기가 싹 사라집니다!
             if (gameStatus === 'MOVING' && movingOriginalState) {
                 movingOriginalState.cells.forEach(c => {
-                    if(c >= 0 && c < 200) cells[c].classList.add('ghost-original');
+                    // 🚨 총 칸 수를 200에서 140으로 수정
+                    if(c >= 0 && c < 140) cells[c].classList.add('ghost-original');
                 });
             }
 
             myUnits.forEach(u => {
                 u.cells.forEach(c => {
-                    if(c < 0 || c >= 200) return;
+                    // 🚨 총 칸 수를 200에서 140으로 수정
+                    if(c < 0 || c >= 140) return;
                     cells[c].classList.add('my-unit');
                     
                     // 🚨 강철 상자(📦)일 경우 갈색 클래스 덮어씌우기
@@ -397,7 +404,8 @@
             const ghostClass = (gameStatus === 'MOVING') ? 'ghost-purple' : 'ghost';
 
             cells.forEach(c => { 
-                if(c >= 0 && c < 200) {
+                // 🚨 총 칸 수를 200에서 140으로 수정
+                if(c >= 0 && c < 140) {
                     myG.children[c].classList.add(ghostClass);
                     if(invalid) myG.children[c].classList.add('ghost-invalid');
                 }
@@ -566,7 +574,7 @@
                 if (!data.blocked) {
                     document.getElementById('opponent-grid').children[data.attackIndex].classList.add(data.hit ? 'hit-unit' : 'miss-cell');
                 }
-                addGameLog(`내 공격: ${data.hit ? "💥 적중!" : (data.blocked ? "🛡️ 떡장갑에 막힘!" : "🌊 불발")}`);
+                addGameLog(`내 공격: ${data.hit ? "💥 적중!" : (data.blocked ? "🛡️ T블럭에 막아냄!" : "🌊 불발")}`);
             } else {
                 // 2. 내가 방어할 때: 막힌 게 아닐 때만 피격 판정
                 if (!data.blocked) {
@@ -585,7 +593,7 @@
                     });
                     renderMyGrid(); 
                 }
-                addGameLog(`상대 공격: ${data.hit ? "💥 적중!" : (data.blocked ? "🛡️ 떡장갑에 막아냄!" : "🌊 불발")}`);
+                addGameLog(`상대 공격: ${data.hit ? "💥 적중!" : (data.blocked ? "🛡️ T블럭에 막아냄!" : "🌊 불발")}`);
             }
             
             if(data.nextTurn) updateTurn(data.nextTurn);
