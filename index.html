@@ -24,7 +24,9 @@
         .my-unit { background: #2ecc71 !important; border: 1px solid #27ae60 !important; }
         .hit-unit { background: #e74c3c !important; border: 1px solid #c0392b !important; }
         .miss-cell { background: #95a5a6 !important; }
-        
+
+        /* 🚨 강철 상자 전용 갈색 CSS 추가 */
+        .box-unit { background: #8d6e63 !important; border: 1px solid #5d4037 !important; }
         /* 🚨 시각적 마스터키 CSS 완벽 구현 🚨 */
         .ghost { background: rgba(46, 204, 113, 0.4); } 
         .ghost-purple { background: rgba(155, 89, 182, 0.6); } /* 움직이는 보라색 유닛 */
@@ -343,10 +345,15 @@
                 u.cells.forEach(c => {
                     if(c < 0 || c >= 200) return;
                     cells[c].classList.add('my-unit');
+                    
+                    // 🚨 강철 상자(📦)일 경우 갈색 클래스 덮어씌우기
+                    if (u.type === '📦') {
+                        cells[c].classList.add('box-unit'); 
+                    }
+
                     if(u.isHit) cells[c].style.opacity = "0.6";
                     if(u.hitCells && u.hitCells.includes(c)) cells[c].classList.add('hit-unit');
                     
-                    // 🚨 추가된 1줄: 기동 모드에서 선택된 1x1 유닛을 예쁘게 빛나게 만듦
                     if (c === selected1x1Idx) cells[c].classList.add('moving-1x1');
                 });
             });
