@@ -248,7 +248,7 @@
             border-top: 1px solid rgba(127, 29, 29, 0.3);
             padding-top: 10px;
         }
-        .log-area, .chat-area { flex: 1; background: rgba(31, 22, 22, 0.483); border: 1px solid #ce2d2d; overflow-y: auto; padding: 10px; font-size: 0.85em; border-radius: 5px; display: block; }
+        .log-area, .chat-area { flex: 1; background: rgba(31, 22, 22, 0.483); border: 1px solid #ce2d2d; overflow-y: auto; padding: 10px; font-size: 0.85em; border-radius: 5px; }
 
         .left-panel { flex: 2; display: flex; flex-direction: column; gap: 5px; }
         .right-panel { flex: 1; display: flex; flex-direction: column; gap: 10px; min-width: 250px; }
@@ -958,15 +958,9 @@
             if(i.value) socket.emit('sendChat', i.value);
             i.value = "";
         }
-
-        // ✅ 기존 코드를 아래 내용으로 교체
         socket.on('receiveChat', d => {
             const l = document.getElementById('chat-log');
-            // 한 줄에 다 들어가도록 <span>을 활용합니다.
-            l.innerHTML += `<div style="margin-bottom: 3px;">
-                <strong style="color: #f87171;">${d.name}:</strong> 
-                <span style="color: #fff; margin-left: 5px;">${d.msg}</span>
-            </div>`;
+            l.innerHTML += `<div>${d.name}: ${d.msg}</div>`;
             l.scrollTop = l.scrollHeight;
         });
 
