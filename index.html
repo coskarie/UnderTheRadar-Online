@@ -356,15 +356,14 @@
             <strong>📊 게임 로그</strong>
 
             <div id="game-log" class="log-area"></div>
-            <strong>
-                <span style="font-size: 9px; color: rgba(239, 68, 68, 0.5); animation: pulse 2s infinite;">● LIVE</span>
-            </strong>
-
             <style>
             @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
             </style>
             
-            <strong>💬 실시간 채팅</strong>
+            <strong>
+                <span>💬 실시간 채팅</span>
+                <span style="font-size: 9px; color: rgba(239, 68, 68, 0.5); animation: pulse 2s infinite; font-weight: normal;">● LIVE</span>
+            </strong>
             <div id="chat-log" class="chat-area"></div>
             <div class="chat-input-group">
                 <input type="text" id="chat-input" style="flex:1; padding: 5px;" onkeypress="if(event.keyCode==13) sendChat()">
