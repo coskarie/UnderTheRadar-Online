@@ -448,7 +448,7 @@ io.on('connection', (socket) => {
             }
         }
     }
-
+    
     function updateRoomInfo(roomCode) {
         if (rooms[roomCode]) {
             io.to(roomCode).emit('roomData', rooms[roomCode]);
