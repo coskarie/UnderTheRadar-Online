@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>UTR | Tactical Data Interface (Smooth Close)</title>
+    
+    <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@300;400;500;600;700&family=Noto+Sans+KR:wght@300;400;500;700;900&family=Inconsolata:wght@400;700&display=swap" rel="stylesheet">
+
+    <style>
+        /* --- [BASE & LAYOUT] --- */
+        body { 
+            font-family: 'Noto Sans KR', sans-serif; 
+            background: #000; color: #fff;
+            display: flex; height: 100vh; margin: 0; overflow: hidden; 
+        }
+
+        /* --- [ANIMATIONS] --- */
+        @keyframes rotate-radar { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        @keyframes pulse-red { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+        @keyframes flash-text { to { opacity: 0.7; } }
+
+        /* 🚀 스와이프 인 (오른쪽에서 나타나기) */
+        @keyframes swipe-in { 
+            0% { opacity: 0; transform: translateX(100px); filter: blur(10px); }
+            100% { opacity: 1; transform: translateX(0); filter: blur(0); }
+        }
+
+        /* 🚀 스와이프 아웃 (오른쪽으로 사라지기) */
+        @keyframes swipe-out { 
+            0% { opacity: 1; transform: translateX(0); filter: blur(0); }
+            100% { opacity: 0; transform: translateX(100px); filter: blur(10px); }
+        }
+
+        /* --- [1. LOADING SCREEN] --- */
+        #loading-screen {
+            position: fixed; inset: 0; background: #000; z-index: 9999;
+            display: flex; justify-content: center; align-items: center;
+            transition: opacity 1s ease, visibility 1s;
+        }
+        #loading-screen.loaded { opacity: 0; visibility: hidden; }
+        .loading-content { text-align: center; width: 300px; }
+        .radar-loader { width: 100px; height: 100px; border: 2px solid #2ecc71; border-radius: 50%; margin: 0 auto 25px; position: relative; overflow: hidden; }
+        .radar-loader .sweep { position: absolute; inset: 0; background: conic-gradient(from 0deg, rgba(46, 204, 113, 0.6), transparent 90deg); animation: rotate-radar 1.5s linear infinite; }
+        .loading-text { font-family: 'Rajdhani'; font-weight: 700; font-size: 1.1rem; color: #2ecc71; letter-spacing: 2px; margin-bottom: 10px; }
+        .progress-bar { width: 100%; height: 2px; background: rgba(46, 204, 113, 0.1); border-radius: 2px; overflow: hidden; }
+        #progress-fill { width: 0%; height: 100%; background: #2ecc71; box-shadow: 0 0 10px #2ecc71; }
+
+        /* --- [2. LEFT CONTENT: MAIN AREA] --- */
+        #left-content { flex: 1; display: flex; flex-direction: column; padding: 40px; overflow-y: auto; }
+        .header-section { margin-bottom: 50px; }
+        .title-top { font-family: 'Rajdhani'; color: #a0b0c0; letter-spacing: 8px; font-size: 0.9rem; }
+        .neon-title { font-size: 3.5rem; margin: 10px 0; font-weight: 900; letter-spacing: -1px; }
+        .title-bottom { font-family: 'Rajdhani'; font-style: italic; color: #8a9ba8; letter-spacing: 2px; font-size: 0.9rem; }
+        .flicker { animation: flash-text 0.5s ease-out alternate infinite; opacity: 0.2; }
+
+        /* --- [3. MONITOR CARDS] --- */
+        .cards-container { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 20px; }
+        .monitor-card {
+            position: relative; background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.05);
+            padding: 25px; cursor: pointer; transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+        .monitor-card.active { border-color: #ef4444; background: rgba(220, 38, 38, 0.1); }
+        .monitor-card:hover { transform: translateY(-5px); }
+        .card-header { display: flex; justify-content: space-between; font-family: 'Rajdhani'; font-size: 11px; color: rgba(255, 255, 255, 0.3); margin-bottom: 15px; }
+        .live-dot { display: inline-block; width: 5px; height: 5px; background: #ef4444; border-radius: 50%; margin-right: 6px; animation: pulse-red 1.5s infinite; }
+        .card-body { display: flex; gap: 15px; }
+        .icon-box { color: #ef4444; }
+        .card-title { font-size: 1.3rem; font-weight: 700; margin-bottom: 5px; color: #eee; }
+        .card-desc { font-size: 0.8rem; color: rgba(255, 255, 255, 0.4); line-height: 1.5; }
+        .bracket { position: absolute; width: 10px; height: 10px; border-color: rgba(220, 38, 38, 0.3); border-style: solid; transition: 0.3s; }
+        .tl { top: 0; left: 0; border-width: 2px 0 0 2px; }
+        .br { bottom: 0; right: 0; border-width: 0 2px 2px 0; }
+
+        /* --- [4. RADAR AREA 최종 수정] --- */
+        .radar-zone { 
+            margin-top: auto; 
+            padding-top: 40px; 
+            display: flex; 
+            align-items: center; 
+            gap: 20px; 
+        }
+
+        .radar-btn { 
+            width: 80px; height: 80px; /* 크기를 살짝 키웠습니다 */
+            border: 1px solid #2ecc71; 
+            border-radius: 50%; 
+            position: relative; 
+            overflow: hidden; 
+            background: #000;
+            cursor: pointer;
+            transition: 0.3s;
+        }
+
+        /* 레이더 스윕 (초록색 빛줄기) */
+        .radar-btn .sweep { 
+            position: absolute; inset: 0; 
+            background: conic-gradient(from 0deg, rgba(46, 204, 113, 0.4), transparent 90deg); 
+            opacity: 0; 
+        }
+
+        /* 💡 중앙 '돌아가기' 텍스트 스타일 */
+        .radar-label {
+            position: absolute;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            font-family: 'Noto Sans KR', sans-serif;
+            font-size: 0.7rem;
+            font-weight: 700;
+            color: #2ecc71;
+            white-space: nowrap;
+            opacity: 0; /* 평소에는 숨김 */
+            z-index: 10;
+            pointer-events: none; /* 글자가 마우스 이벤트를 방해하지 않게 설정 */
+        }
+
+        /* 🔥 마우스 호버 시 연출 */
+        .radar-btn:hover { 
+            border-color: #fff; 
+            box-shadow: 0 0 15px rgba(46, 204, 113, 0.5); 
+        }
+
+        /* 1. 레이더 회전 시작 */
+        .radar-btn:hover .sweep { 
+            opacity: 1; 
+            animation: rotate-radar 2s linear infinite; 
+        }
+
+        /* 2. '돌아가기' 글자 나타나서 느리게 깜빡이기 */
+        .radar-btn:hover .radar-label {
+            opacity: 1;
+            animation: slow-blink-text 2.5s ease-in-out infinite;
+        }
+
+        /* 🚀 글자 전용 느린 깜빡임 애니메이션 */
+        @keyframes slow-blink-text {
+            0%, 100% { opacity: 0.3; transform: translate(-50%, -50%) scale(0.95); }
+            50% { opacity: 1; transform: translate(-50%, -50%) scale(1); text-shadow: 0 0 8px #2ecc71; }
+        }
+
+        /* 레이더 회전 애니메이션 (기존 것 유지) */
+        @keyframes rotate-radar {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+        /* --- [5. RIGHT PANEL: MISSION RULES] --- */
+        #right-panel { width: 35%; min-width: 250px; background: rgba(8, 0, 0, 0.98); border-left: 1px solid rgba(220, 38, 38, 0.2); padding: 30px 25px; display: flex; flex-direction: column; overflow-y: auto; overflow-x: hidden; }
+        
+        .close-btn {
+            align-self: flex-end; font-family: 'Rajdhani'; color: #ef4444; cursor: pointer;
+            font-size: 11px; letter-spacing: 2px; border: 1px solid rgba(239, 68, 68, 0.3);
+            padding: 4px 10px; margin-bottom: 10px; transition: 0.3s;
+        }
+        .close-btn:hover { background: #ef4444; color: #fff; }
+
+        .waiting-state { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; opacity: 0.2; text-align: center; }
+
+        /* 💡 애니메이션 트리거 클래스 */
+        .animate-swipe { animation: swipe-in 0.4s cubic-bezier(0.23, 1, 0.32, 1) forwards; }
+        .animate-fadeout { animation: swipe-out 0.4s cubic-bezier(0.23, 1, 0.32, 1) forwards; }
+
+        .panel-label { display: flex; justify-content: space-between; font-family: 'Rajdhani'; color: #f87171; font-size: 0.9rem; border-bottom: 1px solid rgba(127, 29, 29, 0.4); padding-bottom: 10px; margin-bottom: 20px; letter-spacing: 2px; }
+        .db-item { margin-bottom: 20px; padding: 15px; border-left: 2px solid rgba(239, 68, 68, 0.15); background: rgba(239, 68, 68, 0.01); }
+        .db-title { font-weight: 700; color: #fca5a5; font-size: 1rem; margin-bottom: 6px; display: flex; align-items: center; gap: 8px; }
+        .db-title .symbol { color: #ef4444; font-family: 'Inconsolata'; font-size: 1.2rem; min-width: 20px; }
+        .db-content { font-size: 0.85rem; color: rgba(255, 255, 255, 0.6); line-height: 1.6; }
+        
+        .warning-footer { background: rgba(239, 68, 68, 0.03); border: 1px dashed rgba(239, 68, 68, 0.2); padding: 15px; margin-top: auto; font-family: 'Inconsolata'; font-size: 0.8rem; color: #ef4444; text-align: center; }
+    </style>
+</head>
+<body>
+
+    <div id="loading-screen">
+        <div class="loading-content">
+            <div class="radar-loader"><div class="sweep"></div></div>
+            <div class="loading-text">DECRYPTING SYSTEM... <span id="percent">0</span>%</div>
+            <div class="progress-bar"><div id="progress-fill"></div></div>
+        </div>
+    </div>
+
+    <div id="left-content">
+        <header class="header-section">
+            <div class="title-top">OPERATIONAL COMMAND CENTER</div>
+            <h1 class="neon-title">UNDER THE RADAR</h1>
+            <div class="title-bottom"><span class="flicker">SELECT DATA SOURCE TO BEGIN...</span></div>
+        </header>
+
+        <div class="cards-container">
+            <div class="monitor-card" id="card-rules" onclick="toggleView('rules')">
+                <div class="card-header"><span><span class="live-dot"></span>CAM-01 · MISSION</span><span>TOGGLE DATA</span></div>
+                <div class="card-body">
+                    <div class="icon-box"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 7v14"></path><path d="M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z"></path></svg></div>
+                    <div><div class="card-title">세계관</div><p class="card-desc">작전 구역의 기본 수칙 및 시스템 운영 체계</p></div>
+                </div>
+                <span class="bracket tl"></span><span class="bracket br"></span>
+            </div>
+
+            <div class="monitor-card" id="card-units" onclick="toggleView('units')">
+                <div class="card-header"><span><span class="live-dot"></span>CAM-02 · UNIT DATA</span><span>TOGGLE DATA</span></div>
+                <div class="card-body">
+                    <div class="icon-box"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="9" y1="3" x2="9" y2="21"></line><line x1="15" y1="3" x2="15" y2="21"></line><line x1="3" y1="9" x2="21" y2="9"></line><line x1="3" y1="15" x2="21" y2="15"></line></svg></div>
+                    <div><div class="card-title">유닛 설명</div><p class="card-desc">블록별 특수 능력 및 기동 전술 데이터</p></div>
+                </div>
+                <span class="bracket tl"></span><span class="bracket br"></span>
+            </div>
+        </div>
+
+        <div class="radar-zone">
+            <div class="radar-btn"onclick="closeAll()">
+            <div class="sweep"></div>
+            <div class="radar-label">돌아가기</div>
+        </div>
+            <div style="color: #2ecc71; font-family: 'Inconsolata'; font-size: 0.8rem;">
+                > FREQUENCY: 144.2Hz<br>> RADAR: SCANNING
+            </div>
+        </div>
+    </div>
+
+    <div id="right-panel">
+        <div id="waiting-panel" class="waiting-state">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1"><path d="M21 12a9 9 0 1 1-6.219-8.56"></path></svg>
+            <div style="font-family: 'Rajdhani'; letter-spacing: 2px;">AWAITING DATA LINK...</div>
+        </div>
+
+        <div id="dynamic-display" style="display: none; height: 100%;">
+            <div class="close-btn" onclick="closeAll()">[X] CLOSE SESSION</div>
+            <div id="view-label" class="panel-label"><span>📝 DATA VIEW</span><span>● DECRYPTED</span></div>
+            <div id="content-body" class="db-box"></div>
+            <div class="warning-footer">
+                [SYSTEM STATUS: ACCESS GRANTED]
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const database = {
+            rules: {
+                label: "MISSION RULES",
+                items: [
+                    { 
+                        s: "01", 
+                        t: "기밀 배치", 
+                        c: "적의 정찰 범위를 예측하여 아군 유닛을 비정형 위치에 은닉하십시오. 예측 불가능한 배치가 생존의 첫걸음입니다." 
+                    },
+                    { 
+                        s: "02", 
+                        t: "연속 타격", 
+                        c: "좌표 분석을 통해 적 유닛 포격에 성공할 경우, 추가 공격권이 부여됩니다. 화력을 집중하여 적의 함대를 일거에 섬멸하십시오." 
+                    },
+                    { 
+                        s: "03", 
+                        t: "전술 기동", 
+                        c: "5턴 마다 한 번 유닛 재배치가 가능합니다. 전황에 맞춰 본대의 위치를 수정하여 적의 포격 예측을 무력화하십시오." 
+                    },
+                    { 
+                        s: "04", 
+                        t: "승리 조건", 
+                        c: "구역 내 식별된 모든 적군 유닛을 먼저 전손(全損)시키는 측이 최종 승리하며, 작전권을 확보하게 됩니다." 
+                    }
+                ]
+            },
+            units: { label: "UNIT DATABASE", items: [
+                { s: "ㄷ", t: "생산기지", c: "기동함선 전손 시 10턴 마다 재생성. 파괴 시 최대연료 -1, 상대방 +2 부여." },
+                { s: "L", t: "레이더", c: "마주보는 x좌표 통과 시 시스템 로그에 탐지 데이터가 출력됩니다." },
+                { s: "I", t: "스나이퍼", c: "마주보는 x좌표에 '저격' 스킬 사용 가능. 범위는 클릭 시 자동 표시." },
+                { s: "T", t: "디펜더", c: "후방 블럭 엄호. 포격 성공 시에도 추가 턴이 발생하지 않습니다." },
+                { s: "1x1", t: "기동함선", c: "'이동' 스킬로 1칸 이동 가능. 최대연료만큼 연속 기동 가능." }
+            ]}
+        };
+
+        let currentActive = null;
+
+        function toggleView(key) {
+            const waiting = document.getElementById('waiting-panel');
+            const display = document.getElementById('dynamic-display');
+            const body = document.getElementById('content-body');
+            const label = document.getElementById('view-label').querySelector('span');
+            
+            // 토글 로직
+            if (currentActive === key) {
+                closeAll();
+                return;
+            }
+
+            currentActive = key;
+            waiting.style.display = 'none';
+            display.style.display = 'flex';
+            display.style.flexDirection = 'column';
+
+            // 애니메이션 리셋 및 열기 (animate-swipe 추가)
+            display.classList.remove('animate-swipe', 'animate-fadeout');
+            void display.offsetWidth;
+            display.classList.add('animate-swipe');
+
+            // 카드 활성화 표시
+            document.querySelectorAll('.monitor-card').forEach(c => c.classList.remove('active'));
+            document.getElementById(`card-${key}`).classList.add('active');
+
+            // 데이터 주입
+            const data = database[key];
+            label.innerText = `● ${data.label}`;
+            body.innerHTML = data.items.map(item => `
+                <div class="db-item">
+                    <div class="db-title"><span class="symbol">${item.s}</span><span>${item.t}</span></div>
+                    <p class="db-content">${item.c}</p>
+                </div>
+            `).join('');
+        }
+
+        // 💡 manual.html 내부의 끄기 함수
+        function closeAll() {
+            const waiting = document.getElementById('waiting-panel');
+            const display = document.getElementById('dynamic-display');
+            
+            if (!currentActive) {
+                // 만약 아무것도 안 켜진 상태(대기화면)에서 레이더를 눌렀을 때도 
+                // 바로 본게임으로 돌아가게 하려면 이 코드를 추가합니다.
+                if (window.parent && window.parent.closeManualFromFrame) {
+                    window.parent.closeManualFromFrame();
+                }
+                return;
+            }
+
+            // 1. 사라지는 애니메이션 실행
+            display.classList.remove('animate-swipe');
+            display.classList.add('animate-fadeout');
+
+            document.querySelectorAll('.monitor-card').forEach(c => c.classList.remove('active'));
+            currentActive = null;
+
+            // 2. 0.4초 애니메이션이 끝난 후 본게임(부모)에게 알림
+            setTimeout(() => {
+                display.style.display = 'none';
+                display.classList.remove('animate-fadeout');
+                waiting.style.display = 'flex';
+
+                // 🚀 [중요] 부모창(index.html)에 있는 닫기 함수를 실행하라!
+                if (window.parent && window.parent.closeManualFromFrame) {
+                    window.parent.closeManualFromFrame();
+                }
+            }, 400);
+        }
+
+        window.addEventListener('DOMContentLoaded', () => {
+            const percentNum = document.getElementById('percent');
+            const progressFill = document.getElementById('progress-fill');
+            const loadingScreen = document.getElementById('loading-screen');
+            let progress = 0;
+            const timer = setInterval(() => {
+                progress += Math.floor(Math.random() * 8) + 2; 
+                if (progress >= 100) {
+                    progress = 100;
+                    clearInterval(timer);
+                    setTimeout(() => { loadingScreen.classList.add('loaded'); }, 600);
+                }
+                percentNum.innerText = progress;
+                progressFill.style.width = progress + '%';
+            }, 30);
+        });
+    </script>
+</body>
+</html>
