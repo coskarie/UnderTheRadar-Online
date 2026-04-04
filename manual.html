@@ -223,7 +223,7 @@
         </div>
 
         <div id="dynamic-display" style="display: none; height: 100%;">
-            <div class="close-btn" onclick="closeAll()">[X] CLOSE SESSION</div>
+            <div class="close-btn" onclick="closeContent()">[X] CLOSE SESSION</div>
             <div id="view-label" class="panel-label"><span>📝 DATA VIEW</span><span>● DECRYPTED</span></div>
             <div id="content-body" class="db-box"></div>
             <div class="warning-footer">
@@ -305,6 +305,33 @@
                     <p class="db-content">${item.c}</p>
                 </div>
             `).join('');
+        }
+
+
+        // 📝 우측 패널의 내용만 부드럽게 닫는 함수 (화면 유지)
+        function closeContent() {
+            const waiting = document.getElementById('waiting-panel');
+            const display = document.getElementById('dynamic-display');
+            
+            // 이미 닫혀있으면 실행 안 함
+            if (!currentActive) return;
+
+            // 1. 우측 패널 사라지는 애니메이션 (오른쪽으로 스윽)
+            display.classList.remove('animate-swipe');
+            display.classList.add('animate-fadeout');
+
+            // 2. 왼쪽 카드의 불빛(active) 끄기
+            document.querySelectorAll('.monitor-card').forEach(c => c.classList.remove('active'));
+            currentActive = null;
+
+            // 3. 애니메이션 시간(0.4초) 대기 후 상태 복구
+            setTimeout(() => {
+                display.style.display = 'none';
+                display.classList.remove('animate-fadeout');
+                waiting.style.display = 'flex'; // 다시 "AWAITING DATA..." 표시
+                
+                // 🚨 여기에 window.parent... 코드가 없으므로 본게임은 꺼지지 않습니다!
+            }, 400);
         }
 
         // 💡 manual.html 내부의 끄기 함수
