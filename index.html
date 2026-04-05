@@ -271,9 +271,13 @@
 
         /* 1. 🧱 공통 뼈대 (크기, 격자 칸수, 테두리 등은 그대로 공유) */
         .grid { 
-            width: 95%; margin: 0 auto; height: 210px; background: #5c7d644e; border: 2px solid #62ff00; 
-            display: grid; grid-template-columns: repeat(14, 1fr); grid-template-rows: repeat(10, 1fr); 
-            /* 🚨 여기서 background 이미지 설정은 빼버립니다! */
+            width: 95%; 
+            margin: 0 auto; 
+            height: 210px; 
+            display: grid; 
+            grid-template-columns: repeat(14, 1fr); 
+            grid-template-rows: repeat(10, 1fr);
+            flex-shrink: 0; /* 🚨 핵심: 어떤 일이 있어도 높이 210px을 양보하지 마라! */
         }
 
         /* 2. 🎯 상대방 격자판 전용 (Grid1.jpg) */
@@ -319,15 +323,17 @@
         .user-list-box { background: #000000; padding: 10px; border-radius: 5px; font-size: 0.9em; display: flex; flex-direction: column; gap: 5px; }
         .my-turn-border { border: 4px solid #ff9800 !important; }
 
-        /* 🚨 신규 기획: 연료 및 액션 패널 CSS */
-        .action-panel { display: none; gap: 5px; margin-top: 5px; }
-        .action-btn { padding: 6px; border: 1px solid #7f8c8d; border-radius: 4px; background: #ecf0f1; cursor: pointer; font-size: 0.85em; flex: 1; }
-        .action-btn.active { background: #e74c3c; color: white; border-color: #c0392b; font-weight: bold; }
+        .action-panel {display: none; gap: 10px; margin: 5px 0 15px 0; flex-shrink: 0; }
+        .action-btn {flex: 1; padding: 10px; background: rgba(8, 0, 0, 0.8); border: 1px solid rgba(255, 255, 255, 0.15); color: rgba(255, 255, 255, 0.5);
+            font-family: 'Rajdhani', 'Noto Sans KR', sans-serif; font-size: 0.95rem; font-weight: 700; letter-spacing: 1px; border-radius: 0px; cursor: pointer; 
+            transition: all 0.3s ease; text-transform: uppercase; }
+        .action-btn:hover:not(:disabled) {border-color: rgba(46, 204, 113, 0.6); color: #2ecc71; background: rgba(46, 204, 113, 0.05); }
+        .action-btn.active {background: rgba(231, 76, 60, 0.15); color: #e74c3c; border: 1px solid #e74c3c; box-shadow: inset 0 0 10px rgba(231, 76, 60, 0.2); text-shadow: 0 0 5px rgba(231, 76, 60, 0.5);}
+        .action-btn:disabled {background: rgba(255, 255, 255, 0.02) !important; border-color: rgba(255, 255, 255, 0.05) !important; color: rgba(255, 255, 255, 0.1) !important;
+            cursor: not-allowed; box-shadow: none !important; text-shadow: none !important; }
         #fuel-display { display: none; font-weight: bold; color: #2980b9; font-size: 1.1em; background: #d6eaf8; padding: 5px; border-radius: 4px; text-align: center; }
         .moving-1x1 { box-shadow: 0 0 10px 3px #9b59b6 inset !important; } /* 선택된 1x1 유닛 시각 효과 */
         /* 🌟 네온 후광이 흘러가는 애니메이션 */
-
-
         /* 🎯 [신규 추가] 저격 조준경 & 타격 이펙트 CSS */
         #scope-layer {
             position: fixed; pointer-events: none; display: none;
