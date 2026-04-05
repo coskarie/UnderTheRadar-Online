@@ -163,87 +163,75 @@ io.on('connection', (socket) => {
         }
     });
 
-    // 6. 특수 능력 판정 공격 로직
+    // 6. 특수 능력 판정 및 공격 로직 (140칸 최적화 Pro 버전)
     socket.on('attack', (data) => {
         const room = rooms[currentRoom];
         if (!room || room.gameState !== 'PLAYING' || room.turn !== socket.id) return;
 
         const { index, type } = data;
         const attackIndex = index;
-        // 🚨 199에서 139로 수정 (총 140칸 기준 거울 반전)
+        // 🚨 140칸 시스템 거울 반전 공식 (0~139)
         const targetIndex = 139 - attackIndex; 
 
         const attacker = room.players.find(p => p.id === socket.id);
         const opponent = room.players.find(p => p.id !== socket.id);
 
-        // 🚨 가로 칸 수를 20에서 14로 수정
+        // 🚨 14칸 레이아웃 기준 좌표 계산 (0 ~ 13)
         const attackX = attackIndex % 14; 
         const targetX = targetIndex % 14;
         const targetY = Math.floor(targetIndex / 14);
 
-        // 🔫 SNIPE (저격) 로직 검증
+        // ==========================================
+        // [1] 저격(SNIPE) 특수 검증
+        // ==========================================
         if (type === 'SNIPE') {
-            if (attacker.fuel < 1) return socket.emit('systemMsg', "저격 실패: 연료가 1 필요합니다.");
+            if (attacker.fuel < 1) return socket.emit('systemMsg', "연료 부족: 저격 실패.");
             
-            // 🚨 저격수의 Y좌표를 기억할 변수
             let sniperY = -1; 
-
-            // 1. 저격 사선 검증 및 저격수 Y좌표 추출
             const hasLineOfSight = attacker.units.some(u => {
                 if (u.type !== 'I') return false; 
                 const isAlive = u.cells.length > (u.hitCells ? u.hitCells.length : 0);
-                // 🚨 가로 칸 수를 20에서 14로 수정
                 const hasSight = isAlive && u.cells.some(c => c % 14 === attackX);
-                
-                // 사선이 맞다면, 이 저격수의 Y좌표를 저장해둡니다. (I블럭은 가로라 아무 셀이나 Y가 같음)
-                if (hasSight) {
-                    // 🚨 가로 칸 수를 20에서 14로 수정
-                    sniperY = Math.floor(u.cells[0] / 14); 
-                }
+                if (hasSight) sniperY = Math.floor(u.cells[0] / 14); 
                 return hasSight;
             });
             
-            if (!hasLineOfSight) return socket.emit('systemMsg', "저격 실패: 아군 ㅡ(I) 블럭의 사선(X열)을 벗어났습니다!");
+            if (!hasLineOfSight) return socket.emit('systemMsg', "저격 실패: 해당 열에 아군 저격수(I)가 없습니다.");
 
-            // 2. 아군 탱커(T) 오사 방지 검증 (🚨 Y좌표 앞뒤 판정 완벽 적용)
+            // 아군 T블럭 오사 방지 (저격수보다 앞에 있는 아군 방패 검증)
             const isBlockedByAlly = attacker.units.some(u => {
                 if (u.type !== 'T') return false; 
                 const isAlive = u.cells.length > (u.hitCells ? u.hitCells.length : 0);
-                
-                // 조건 1: T블럭이 같은 사선(X열)에 있는가?
-                // 🚨 가로 칸 수를 20에서 14로 수정
                 const sameX = u.cells.some(c => c % 14 === attackX); 
-                
-                // 조건 2: T블럭이 저격수보다 '앞쪽(Y값이 작음)'에 있는가?
-                // T블럭의 셀 중 하나라도 저격수(sniperY)보다 Y값이 작으면 사선을 가린 것!
-                // 🚨 가로 칸 수를 20에서 14로 수정
                 const isTFrontOfSniper = u.cells.some(c => Math.floor(c / 14) < sniperY);
-
                 return isAlive && sameX && isTFrontOfSniper; 
             });
 
-            if (isBlockedByAlly) return socket.emit('systemMsg', "저격 실패: 아군 ㅜ(T) 블럭에 시야가 가려져 있습니다.");
+            if (isBlockedByAlly) return socket.emit('systemMsg', "저격 실패: 아군 방패(T)가 시야를 가립니다.");
             
-            attacker.fuel -= 1; 
+            attacker.fuel -= 1; // 연료 차감
             socket.emit('updateFuel', { current: attacker.fuel, max: attacker.maxFuel });
         }
 
-        // ... (아래 쉴드 및 타격 판정 로직은 기존과 동일하므로 생략 없이 그대로 유지)
+        // ==========================================
+        // [2] 상대방 방어(T) 및 타격 판정
+        // ==========================================
         let hitResult = false;
         let hitType = null;
         let shieldBlocked = false;
 
+        // 상대방 T블럭 방패 판정
         opponent.units.forEach(u => {
             if (u.type === 'T') {
                 const isAlive = u.cells.length > (u.hitCells ? u.hitCells.length : 0);
                 if (isAlive) {
-                    // 🚨 가로 칸 수를 20에서 14로 수정
                     const tXs = u.cells.map(c => c % 14);
                     const tYs = u.cells.map(c => Math.floor(c / 14));
                     const minX = Math.min(...tXs);
                     const maxX = Math.max(...tXs);
-                    const frontY = Math.min(...tYs); 
+                    const frontY = Math.min(...tYs); // 방패의 최전방 Y좌표
 
+                    // 사선에 걸리고, 방패보다 뒤쪽이며, 방패 본체 클릭이 아닐 때
                     if (targetX >= minX && targetX <= maxX && targetY > frontY && !u.cells.includes(targetIndex)) {
                         shieldBlocked = true;
                     }
@@ -251,9 +239,8 @@ io.on('connection', (socket) => {
             }
         });
 
-        if (shieldBlocked) {
-            socket.emit('systemMsg', "🛡️ 상대의 ㅜ(T) 블럭 후방 보호 영역에 막혀 빗나갔습니다!");
-        } else {
+        // 타격 처리 로직 (막히지 않았을 때만 발동)
+        if (!shieldBlocked) {
             opponent.units.forEach(unit => {
                 if (unit.cells.includes(targetIndex)) {
                     if (!unit.hitCells) unit.hitCells = [];
@@ -264,67 +251,81 @@ io.on('connection', (socket) => {
                     hitResult = true;
                     hitType = unit.type;
 
+                    // 특수 블럭(ㄷ, 📦) 파괴 효과
                     if (unit.type === 'ㄷ' && unit.hitCells.length === unit.cells.length) {
                         opponent.maxFuel = Math.max(0, opponent.maxFuel - 2);
                         attacker.maxFuel += 1;
-                        io.to(currentRoom).emit('systemMsg', "⚠️ 제조창(ㄷ) 완전 파괴! [공격자 최대연료 +1 / 피해자 -2]");
+                        io.to(currentRoom).emit('systemMsg', "⚠️ 제조창(ㄷ) 완파! [공격자 최대연료 +1 / 피해자 -2]");
                     }
-                    
                     if (unit.type === '📦') {
-                        // 🚨 즉시 지급이 아니라 '보너스 통장'에 적립해둠
                         opponent.bonusFuel = (opponent.bonusFuel || 0) + 2;
-                        io.to(currentRoom).emit('systemMsg', "📦 강철 상자 피격! 다음 턴 시작 시 상대방에게 보너스 연료가 +2 지급됩니다.");
+                        io.to(currentRoom).emit('systemMsg', "📦 강철 상자 피격! 다음 턴 보너스 연료 +2 적립.");
                     }
                 }
             });
         }
 
-        if (hitResult) {
+        // ==========================================
+        // [3] 결과 전송 및 턴/프레이즈 계산
+        // ==========================================
+        if (shieldBlocked) {
+            // 🛡️ 방패에 막혔을 때
+            socket.emit('systemMsg', "🛡️ 상대의 T블럭 방패에 막혔습니다!");
+            if (type === 'SNIPE') {
+                io.to(currentRoom).emit('attackResult', { attacker: socket.id, attackIndex, targetIndex, hit: false, blocked: true, nextTurn: socket.id });
+            } else {
+                room.phraseCount++;
+                io.to(currentRoom).emit('attackResult', { attacker: socket.id, attackIndex, targetIndex, hit: false, blocked: true, nextTurn: opponent.id });
+                passTurn(room, opponent.id);
+            }
+        } 
+        else if (hitResult) {
+            // 💥 타격 성공했을 때
             const allDestroyed = opponent.units.every(u => u.type === '📦' || u.cells.length === (u.hitCells ? u.hitCells.length : 0));
             
             if (allDestroyed) {
-                // 게임 끝났을 때
                 io.to(currentRoom).emit('attackResult', { attacker: socket.id, attackIndex, targetIndex, hit: true });
                 room.gameState = 'ENDED';
                 io.to(currentRoom).emit('gameOver', { winner: userName });
+                return; // 게임 끝났으니 아래 로직 무시
+            } 
+            
+            if (hitType === 'T' && type !== 'SNIPE') {
+                passTurn(room, opponent.id);
+                io.to(currentRoom).emit('attackResult', { attacker: socket.id, attackIndex, targetIndex, hit: true, nextTurn: opponent.id });
+                io.to(currentRoom).emit('systemMsg', "🛡️ T블럭 타격! 공격 기회가 소멸되었습니다.");
             } else {
-                if (hitType === 'T' && type !== 'SNIPE') {
-                    // 🛡️ [일반 공격]으로 T블럭을 맞췄을 때 -> 턴 넘어감!
-                    passTurn(room, opponent.id);
-                    // 🚨 nextTurn: opponent.id 를 확실하게 담아서 보냄
-                    io.to(currentRoom).emit('attackResult', { attacker: socket.id, attackIndex, targetIndex, hit: true, nextTurn: opponent.id });
-                    io.to(currentRoom).emit('systemMsg', "🛡️ ㅜ(T) 블럭 타격: 단단한 장갑에 튕겨 추가 공격 기회가 소멸되었습니다!");
-                } else {
-                    // 🎯 일반 함선을 맞췄거나, [저격]으로 맞췄을 때 -> 턴 유지!
-                    if (hitType === 'T' && type === 'SNIPE') {
-                        io.to(currentRoom).emit('systemMsg', "🛡️ ㅜ(T) 블럭 타격! (저격 능력이므로 턴이 유지됩니다.)");
-                    }
-                    // 🚨 nextTurn: socket.id (내 턴 유지) 를 확실하게 담아서 보냄
-                    io.to(currentRoom).emit('attackResult', { attacker: socket.id, attackIndex, targetIndex, hit: true, nextTurn: socket.id });
+                if (hitType === 'T' && type === 'SNIPE') {
+                    io.to(currentRoom).emit('systemMsg', "🛡️ T블럭 타격! (저격 능력이므로 턴이 유지됩니다.)");
                 }
+                io.to(currentRoom).emit('attackResult', { attacker: socket.id, attackIndex, targetIndex, hit: true, nextTurn: socket.id });
             }
-        } else {
-            // ✅ 수정: 저격(SNIPE)이 빗나가거나 방패에 막혔을 때 턴 유지!
+        } 
+        else {
+            // 🌊 허공에 빗나갔을 때
             if (type === 'SNIPE') {
-                // nextTurn을 내 id(socket.id)로 보내어 클라이언트 화면의 턴을 내 턴으로 유지
-                io.to(currentRoom).emit('attackResult', { attacker: socket.id, attackIndex, targetIndex, hit: false, blocked: shieldBlocked, nextTurn: socket.id });
-                socket.emit('systemMsg', "🔫 저격 완료! 추가 액션을 진행하세요.");
-                // passTurn 호출 안 함!
+                io.to(currentRoom).emit('attackResult', { attacker: socket.id, attackIndex, targetIndex, hit: false, nextTurn: socket.id });
+                socket.emit('systemMsg', "🔫 저격 빗나감! (턴 유지)");
             } else {
                 room.phraseCount++;
-                io.to(currentRoom).emit('attackResult', { attacker: socket.id, attackIndex, targetIndex, hit: false, blocked: shieldBlocked, nextTurn: opponent.id });
-                passTurn(room, opponent.id); // 일반 공격이 빗나갔을 때만 턴 넘김
+                io.to(currentRoom).emit('attackResult', { attacker: socket.id, attackIndex, targetIndex, hit: false, nextTurn: opponent.id });
+                passTurn(room, opponent.id);
+            }
+        }
 
-                // 🚨 서로 한 번씩(2번) 빗나갈 때마다 1프레이즈씩 증가!
-                const currentPhrase = Math.floor(room.phraseCount / 2) + 1;
-                io.to(currentRoom).emit('updatePhrase', currentPhrase);
+        // ==========================================
+        // [4] 공통: 프레이즈 갱신 및 재배치(MOVING) 체크
+        // ==========================================
+        // 저격이 아닌 일반 공격이 빗나가거나 막혔을 때만 프레이즈가 증가하므로, 그 조건을 확인
+        if (type !== 'SNIPE' && (!hitResult || shieldBlocked)) {
+            const currentPhrase = Math.floor(room.phraseCount / 2) + 1;
+            io.to(currentRoom).emit('updatePhrase', currentPhrase);
 
-                // 프레이즈 체크 (10번 빗나가면 = 5왕복 = 5프레이즈 완료 시 기동)
-                if (room.phraseCount > 0 && room.phraseCount % 10 === 0) {
-                    room.gameState = 'MOVING';
-                    io.to(currentRoom).emit('startMoving');
-                    io.to(currentRoom).emit('systemMsg', "⚠️ 5프레이즈(10턴) 도달! 본대 유닛을 재배치하세요.");
-                }
+            // 10번 빗나감 = 5왕복 = 5프레이즈 달성
+            if (room.phraseCount > 0 && room.phraseCount % 10 === 0) {
+                room.gameState = 'MOVING';
+                io.to(currentRoom).emit('startMoving');
+                io.to(currentRoom).emit('systemMsg', "⚠️ 5프레이즈(10턴) 도달! 본대 유닛을 재배치하세요.");
             }
         }
     }); // socket.on('attack') 끝
