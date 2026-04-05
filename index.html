@@ -813,8 +813,7 @@
             }
         }
 
-        // 🎯 마우스 추적: 저격 모드일 때만 마우스를 따라다님
-        // 🎯 스마트 조준경 (마그네틱 에임 어시스트)
+        // 🎯 스마트 조준경 (마그네틱 에임 어시스트 - 다중 사선 지원)
         window.addEventListener('mousemove', (e) => {
             if (actionMode !== 'SNIPE') return;
 
@@ -822,25 +821,38 @@
             const reticleLayer = document.getElementById('reticle');
 
             if(scopeLayer && reticleLayer) {
-                let targetX = e.clientX; // 기본 마우스 X 좌표
-                let targetY = e.clientY; // 기본 마우스 Y 좌표
+                let targetX = e.clientX; 
+                let targetY = e.clientY; 
 
-                // 🧲 [핵심] 가이드라인이 존재하면, 조준경을 그쪽으로 강제 납치!
-                const validCell = document.querySelector('.sniper-line');
-                if (validCell) {
-                    // 가이드라인의 화면상 위치와 크기를 가져옴
-                    const rect = validCell.getBoundingClientRect();
-                    
-                    // 조준경의 X좌표를 가이드라인의 '정중앙'으로 강제 고정!
-                    targetX = rect.left + (rect.width / 2);
-                    
-                    // (선택) Y좌표도 상대방 격자판을 벗어나지 않게 위아래 한계선 걸기
+                // 🧲 [핵심 수정] 모든 가이드라인을 다 가져옴
+                const validCells = document.querySelectorAll('.sniper-line');
+                
+                if (validCells.length > 0) {
+                    let closestX = targetX;
+                    let minDistance = Infinity;
+
+                    // 4칸(또는 여러 칸) 중 현재 마우스 X좌표와 가장 가까운 칸의 중앙값을 찾음
+                    validCells.forEach(cell => {
+                        const rect = cell.getBoundingClientRect();
+                        const cellCenterX = rect.left + (rect.width / 2);
+                        const distance = Math.abs(targetX - cellCenterX);
+
+                        if (distance < minDistance) {
+                            minDistance = distance;
+                            closestX = cellCenterX; // 가장 가까운 X좌표로 갱신
+                        }
+                    });
+
+                    // 조준경 X좌표를 가장 가까운 사선의 중앙으로 강제 고정!
+                    targetX = closestX;
+
+                    // Y좌표는 상대방 격자판 밖으로 나가지 않게 위아래 한계선 걸기
                     const gridRect = document.getElementById('opponent-grid').getBoundingClientRect();
                     if (targetY < gridRect.top) targetY = gridRect.top;
                     if (targetY > gridRect.bottom) targetY = gridRect.bottom;
                 }
 
-                // 조준경 위치 적용 (스무스하게 따라가게 하고 싶다면 CSS transition 활용 가능)
+                // 조준경 위치 적용
                 scopeLayer.style.left = targetX + 'px';
                 scopeLayer.style.top = targetY + 'px';
                 reticleLayer.style.left = targetX + 'px';
