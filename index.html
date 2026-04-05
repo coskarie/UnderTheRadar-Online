@@ -484,6 +484,42 @@
             68% { opacity: 0.7; } 100% { opacity: 1.0; } 
         }
         @keyframes foglayer_moveme { 0% { left: 0; } 100% { left: -100%; } }
+        
+
+        /* 💥 [신규 추가] 거친 파편 폭발 이펙트 (ATTACK 전용) */
+        .fragment {
+            position: fixed; /* 마우스 좌표(clientX/Y)와 완벽 일치시키기 위해 fixed 사용 */
+            background: #fff; 
+            width: 8px; height: 8px;
+            clip-path: polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%); 
+            pointer-events: none;
+            opacity: 0;
+            transform-origin: center;
+            z-index: 5000; /* 안개나 조준경 위로 터지도록 최상단 배치 */
+        }
+
+        .trail {
+            position: fixed;
+            background: rgba(255, 165, 0, 0.6); 
+            width: 4px; height: 4px;
+            border-radius: 50%;
+            pointer-events: none;
+            opacity: 0;
+            transform-origin: center;
+            z-index: 4999;
+        }
+
+        @keyframes flyAway {
+            0% { transform: translate(-50%, -50%) rotate(0deg) scale(1); opacity: 1; }
+            50% { background: #ff4500; } 
+            100% { transform: translate(var(--tx), var(--ty)) rotate(var(--tr)) scale(0); opacity: 0; }
+        }
+
+        @keyframes trailFade {
+            0% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+            100% { transform: translate(var(--tx), var(--ty)) scale(0.1); opacity: 0; }
+        }
+
 
     </style>
 </head>
@@ -666,49 +702,39 @@
             for(let i=0; i<140; i++) {
                 const oCell = document.createElement('div');
                 
-                // 💡 [수정됨] 마우스 좌표를 읽기 위해 function(e)로 바꿨습니다.
                 oCell.onclick = function(e) { 
                     if(gameStatus === 'PLAYING' && isMyTurn) {
                         if (actionMode === 'MOVE') return alert("🏃 기동 모드입니다. 내 격자판의 1x1 함선을 클릭하세요.");
                         
-                        // 서버로 보낼 현재 공격 타입을 미리 저장 (버그 방지용)
                         const typeToEmit = actionMode; 
 
                         // 🎯 [저격 모드 전용 로직]
                         if (actionMode === 'SNIPE') {
-                            
-                            // 🚨 1. 안전장치: 클릭한 곳에 'sniper-line' 클래스가 없으면 차단!
                             if (!oCell.classList.contains('sniper-line')) {
                                 addGameLog("[차단] 저격은 가이드라인(하늘색)이 쳐진 X좌표만 공격할 수 있습니다!");
-                                return; // 여기서 함수를 끝내버려서 총알이 안 나가게 함
+                                return; 
                             }
-
-                            // 2. 이펙트 좌표 따오기
-                            const hitX = e.clientX;
-                            const hitY = e.clientY;
-                            
-                            // 3. 번쩍이는 원형 이펙트
+                            // 저격용 이펙트
+                            const hitX = e.clientX; const hitY = e.clientY;
                             const hit = document.createElement('div');
-                            hit.className = 'hit';
-                            hit.style.left = hitX + 'px';
-                            hit.style.top = hitY + 'px';
-                            document.body.appendChild(hit);
-                            setTimeout(() => hit.remove(), 300);
-
-                            // 4. 파편 튀는 이펙트
-                            createParticles(hitX, hitY);
-
-                            // 5. 사격 순간 가이드라인 제거 & 일반 타격 모드로 복귀
+                            hit.className = 'hit'; hit.style.left = hitX + 'px'; hit.style.top = hitY + 'px';
+                            document.body.appendChild(hit); setTimeout(() => hit.remove(), 300);
+                            createParticles(hitX, hitY); // 저격용 파티클
+                            
                             renderSniperLines(false);
                             setActionMode('ATTACK'); 
+                        } 
+                        // 💥 [일반 타격 모드 전용 로직 추가!]
+                        else if (actionMode === 'ATTACK') {
+                            // 일반 타격일 때는 형님이 만든 거친 폭발 이펙트를 호출합니다.
+                            createRoughExplosion(e.clientX, e.clientY);
                         }
 
-                        // 🚀 최종 서버 발사: 저장해둔 typeToEmit('SNIPE' 또는 'ATTACK')을 보냄
+                        // 서버로 공격 정보 발송
                         socket.emit('attack', { index: i, type: typeToEmit }); 
                     }
                     else if(gameStatus === 'PLAYING' && !isMyTurn) addGameLog("[차단] 지금은 내 턴이 아닙니다.");
                 };
-
                 oppGrid.appendChild(oCell);
                 
                 const mCell = document.createElement('div');
@@ -1385,6 +1411,67 @@
             }
         }
 
+        // 💥 거친 폭발 생성 함수 (ATTACK 모드 전용)
+        function createRoughExplosion(x, y) {
+            const fragmentCount = 15;
+            const trailCount = 30; 
+            const colors = ['#ffffff', '#ffea00', '#ff9100', '#ff4500'];
+
+            // 1. 거친 파편 생성
+            for (let i = 0; i < fragmentCount; i++) {
+                const fragment = document.createElement('div');
+                fragment.classList.add('fragment');
+                document.body.appendChild(fragment);
+
+                const size = Math.random() * 10 + 5; 
+                const color = colors[Math.floor(Math.random() * colors.length)];
+                
+                const destinationX = (Math.random() - 0.5) * 400; 
+                const destinationY = (Math.random() - 0.5) * 400; 
+                const rotation = (Math.random() - 0.5) * 1080; 
+                const delay = Math.random() * 0.1; 
+
+                fragment.style.width = `${size}px`;
+                fragment.style.height = `${size}px`;
+                fragment.style.background = color;
+                fragment.style.left = `${x}px`;
+                fragment.style.top = `${y}px`;
+                
+                fragment.style.setProperty('--tx', `${destinationX}px`);
+                fragment.style.setProperty('--ty', `${destinationY}px`);
+                fragment.style.setProperty('--tr', `${rotation}deg`);
+
+                fragment.style.animation = `flyAway 0.5s cubic-bezier(0.1, 0.9, 0.2, 1) ${delay}s forwards`;
+                fragment.addEventListener('animationend', () => { fragment.remove(); });
+            }
+
+            // 2. 불꽃 잔상 생성
+            for (let i = 0; i < trailCount; i++) {
+                const trail = document.createElement('div');
+                trail.classList.add('trail');
+                document.body.appendChild(trail);
+
+                const size = Math.random() * 6 + 2; 
+                const destinationX = (Math.random() - 0.5) * 500; 
+                const destinationY = (Math.random() - 0.5) * 500;
+                const delay = Math.random() * 0.3; 
+
+                trail.style.width = `${size}px`;
+                trail.style.height = `${size}px`;
+                trail.style.left = `${x}px`;
+                trail.style.top = `${y}px`;
+                
+                trail.style.setProperty('--tx', `${destinationX}px`);
+                trail.style.setProperty('--ty', `${destinationY}px`);
+
+                trail.style.animation = `trailFade 0.8s ease-out ${delay}s forwards`;
+                trail.addEventListener('animationend', () => { trail.remove(); });
+            }
+        }
+
+
+
+        // 중요함수__________________________________
         socket.on('gameOver', data => {
             gameStatus = "ENDED";
             const btn = document.getElementById('start-btn');
