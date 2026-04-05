@@ -359,45 +359,22 @@
             box-shadow: 0 0 15px rgba(255, 51, 51, 0.8), inset 0 0 10px rgba(255, 51, 51, 0.5) !important;
         }
 
-        .action-panel {display: none; gap: 10px; margin: 5px 0 15px 0; flex-shrink: 0; }
-        .action-btn {flex: 1; padding: 10px; background: rgba(8, 0, 0, 0.8); border: 1px solid rgba(255, 255, 255, 0.15); color: rgba(255, 255, 255, 0.5);
-            font-family: 'Rajdhani', 'Noto Sans KR', sans-serif; font-size: 0.95rem; font-weight: 700; letter-spacing: 1px; border-radius: 0px; cursor: pointer; 
-            transition: all 0.3s ease; text-transform: uppercase; }
+        .action-panel {display: none; gap: 10px; margin: 5px 0 5px 0; flex-shrink: 0; }
+        .action-btn {flex: 1; padding: 5px 10px; background: rgba(8, 0, 0, 0.8); border: 1px solid rgba(255, 255, 255, 0.15); color: rgba(255, 255, 255, 0.5); font-family: 'Rajdhani', 'Noto Sans KR', sans-serif; 
+        font-size: 0.85rem; font-weight: 700; letter-spacing: 1px; border-radius: 0px; cursor: pointer; transition: all 0.3s ease; text-transform: uppercase; }
         .action-btn:hover:not(:disabled) {border-color: rgba(12, 56, 31, 0.2); ; color: #2ecc71; background: rgba(46, 204, 113, 0.05); }
         .action-btn.active {background: rgba(231, 76, 60, 0.15); color: #e74c3c; border: 1px solid #e74c3c; box-shadow: inset 0 0 10px rgba(231, 76, 60, 0.2); text-shadow: 0 0 5px rgba(231, 76, 60, 0.5);}
         .action-btn:disabled {background: rgba(255, 255, 255, 0.02) !important; border-color: rgba(255, 255, 255, 0.05) !important; color: rgba(255, 255, 255, 0.1) !important;
             cursor: not-allowed; box-shadow: none !important; text-shadow: none !important; }
-        #fuel-display { display: none; font-weight: bold; color: #2980b9; font-size: 1.1em; background: #d6eaf8; padding: 5px; border-radius: 4px; text-align: center; }
-        .moving-1x1 { box-shadow: 0 0 10px 3px #9b59b6 inset !important; } /* 선택된 1x1 유닛 시각 효과 */
+        #fuel-display {display: none; font-weight: bold; color: #2980b9; font-size: 1.1em; background: #d6eaf8; padding: 5px; border-radius: 4px; text-align: center; }
+        .moving-1x1 {box-shadow: 0 0 10px 3px #9b59b6 inset !important; } /* 선택된 1x1 유닛 시각 효과 */
 
-        #scope-layer {
-            position: fixed; pointer-events: none; display: none;
-            z-index: 4000; transform: translate(-50%, -50%);
-            width: 200vw; height: 200vh;
-            backdrop-filter: blur(10px) grayscale(1);
-            -webkit-mask-image: radial-gradient(circle 100px at center, transparent 100%, black 100%);
-            mask-image: radial-gradient(circle 100px at center, transparent 100%, black 100%);
-            -webkit-mask-repeat: no-repeat; mask-repeat: no-repeat;
-        }
-
-        #reticle {
-            position: fixed; top: 50%; left: 50%; width: 200px; height: 200px;
-            transform: translate(-50%, -50%); border: 2px solid #ff0000; border-radius: 50%;
-            pointer-events: none; display: none; z-index: 4001; box-shadow: 0 0 15px #ff0000;
-        }
-        #reticle::before {
-            content: ''; position: absolute; top: 50%; left: 50%; width: 100vw; height: 2px;
-            background: rgba(255, 0, 0, 0.6); box-shadow: 0 0 8px #ff0000; transform: translate(-50%, -50%);
-        }
-        #reticle::after {
-            content: ''; position: absolute; left: 50%; top: 50%; width: 2px; height: 100vh;
-            background: rgba(255, 0, 0, 0.6); box-shadow: 0 0 8px #ff0000; transform: translate(-50%, -50%);
-        }
-        #center-dot {
-            position: absolute; top: 50%; left: 50%; width: 6px; height: 6px; background: #ff0000;
-            border-radius: 50%; transform: translate(-50%, -50%); box-shadow: 0 0 10px #ff0000; z-index: 4002;
-        }
-
+        #scope-layer {position: fixed; pointer-events: none; display: none; z-index: 4000; transform: translate(-50%, -50%); width: 200vw; height: 200vh; backdrop-filter: blur(10px) grayscale(1);
+            -webkit-mask-image: radial-gradient(circle 100px at center, transparent 100%, black 100%); mask-image: radial-gradient(circle 100px at center, transparent 100%, black 100%); -webkit-mask-repeat: no-repeat; mask-repeat: no-repeat; }
+        #reticle {position: fixed; top: 50%; left: 50%; width: 200px; height: 200px; transform: translate(-50%, -50%); border: 2px solid #ff0000; border-radius: 50%; pointer-events: none; display: none; z-index: 4001; box-shadow: 0 0 15px #ff0000;}
+        #reticle::before {content: ''; position: absolute; top: 50%; left: 50%; width: 100vw; height: 2px; background: rgba(255, 0, 0, 0.6); box-shadow: 0 0 8px #ff0000; transform: translate(-50%, -50%); }
+        #reticle::after {content: ''; position: absolute; left: 50%; top: 50%; width: 2px; height: 100vh; background: rgba(255, 0, 0, 0.6); box-shadow: 0 0 8px #ff0000; transform: translate(-50%, -50%); }
+        #center-dot {position: absolute; top: 50%; left: 50%; width: 6px; height: 6px; background: #ff0000; border-radius: 50%; transform: translate(-50%, -50%); box-shadow: 0 0 10px #ff0000; z-index: 4002; }
         .hit {
             position: absolute; width: 100px; height: 100px;
             background: radial-gradient(circle, #fff, #ff0000, transparent);
