@@ -247,10 +247,13 @@
 
 
         /* 주요 패널 */
-        .left-panel { flex: 2; display: flex; flex-direction: column; gap: 5px; padding: 10px; border-radius: 5px; 
-        background-color: rgba(0, 0, 0, 0.9);
-        border: 1px solid rgba(44, 220, 38, 0.5); 
-        border-radius: 8px;
+        .left-panel { 
+            flex: 2; display: flex; flex-direction: column; gap: 12px; padding: 25px; 
+            background: rgba(8, 0, 0, 0.95); /* manual.html과 통일된 짙은 블랙 */
+            border: 1px solid rgba(44, 220, 38, 0.2); 
+            border-radius: 4px; /* 각진 군용 느낌 */
+            position: relative;
+            box-shadow: inset 0 0 20px rgba(46, 204, 113, 0.05);
         }
         .right-panel {
             flex: 1; display: flex; flex-direction: column; gap: 10px; min-width: 250px;
@@ -266,20 +269,32 @@
         .name-label { font-size: 1.1em; font-weight: bold; display: flex; align-items: center; gap: 8px; margin: 2px 0; color: rgb(255, 255, 255); margin-bottom: 1%; margin-left: 15px;}
         .v-mark { color: #4CAF50; font-weight: 900; display: none; }
 
+        /* 1. 🧱 공통 뼈대 (크기, 격자 칸수, 테두리 등은 그대로 공유) */
         .grid { 
             width: 95%; margin: 0 auto; height: 210px; background: #5c7d644e; border: 2px solid #62ff00; 
             display: grid; grid-template-columns: repeat(14, 1fr); grid-template-rows: repeat(10, 1fr); 
-            background: linear-gradient(rgba(125, 125, 125, 0.273), rgba(0, 0, 0, 0.7)), 
-                url('Grid.jpg') no-repeat center center;
-            background-size: cover; 
-            background-attachment: fixed;
+            /* 🚨 여기서 background 이미지 설정은 빼버립니다! */
         }
-        .grid div { border: 0.1px solid #e0f5ff; cursor: pointer; box-sizing: border-box; }
+
+        /* 2. 🎯 상대방 격자판 전용 (Grid1.jpg) */
+        #opponent-grid {
+            background: linear-gradient(rgba(125, 125, 125, 0), rgba(0, 0, 0, 0)), 
+                        url('Grid1.jpg') no-repeat center center;
+            background-size: cover; 
+        }
+
+        /* 3. 🛡️ 내 격자판 전용 (Grid2.jpg) */
+        #my-grid {
+            background: linear-gradient(rgba(125, 125, 125, 0.054), rgba(0, 0, 0, 0.036)), 
+                        url('Grid2.jpg') no-repeat center center;
+            background-size: cover; 
+        }
+        .grid div { border: 0.1px solid #7cffa1aa; cursor: pointer; box-sizing: border-box; }
         
-        .my-unit { background: #ffd438 !important; border: 1px solid #e4e4e4 !important; }
+        .my-unit { background: #16bd16 !important; border: 1px solid #e4e4e4 !important; }
         .hit-unit { background: #e74c3c !important; border: 1px solid #c0392b !important; }
         .miss-cell { background: #5a6364 !important; }
-        .sniper-line { background: rgba(106, 255, 0, 0.5) !important; border: 1px dashed #000000 !important; }
+        .sniper-line { background: rgba(0, 225, 255, 0.211) !important; border: 1px dashed #000000 !important; }
 
         /* 🚨 강철 상자 전용 갈색 CSS 추가 */
         .box-unit { background: #452a24 !important; border: 1px solid #5d4037 !important; }
@@ -369,6 +384,90 @@
             box-shadow: none !important;    /* 네온 효과 제거 */
         }
 
+        /* 🌫️ [신규 추가] 상대방 격자판 전장의 안개 (Fog of War) */
+        .fogwrapper {
+            position: absolute;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            filter: grayscale(0.2) saturate(1.2) sepia(0.2);
+            
+            /* 💡 조준경(4000)보단 아래, 격자판 바닥보단 위 */
+            z-index: 5; 
+            pointer-events: none; /* 🚨 필수: 안개가 클릭을 막지 않게 통과시킴 */
+            overflow: hidden; /* 🚨 필수: 안개가 격자판 밖으로 새어나가지 않게 자름 */
+            border-radius: 0px; /* 에지 이미지를 쓴다면 테두리에 맞게 조절하세요 */
+        }
+
+        /* 💠 모서리 브라켓 디자인 (공통) */
+        .panel-bracket {
+            position: absolute; width: 15px; height: 15px; 
+            border-color: rgba(46, 204, 113, 0.4); border-style: solid; 
+            pointer-events: none;
+        }
+        .bracket-tl { top: 0; left: 0; border-width: 3px 0 0 3px; }
+        .bracket-br { bottom: 0; right: 0; border-width: 0 3px 3px 0; }
+
+        /* 🏷️ 이름표 및 레이블 스타일 (Rajdhani 폰트 적용) */
+        .name-label { 
+            font-family: 'Rajdhani', sans-serif;
+            font-size: 0.9rem; font-weight: 700; 
+            letter-spacing: 2px; color: #2ecc71; 
+            border-bottom: 1px solid rgba(46, 204, 113, 0.2);
+            padding-bottom: 8px; margin: 5px 0 10px 0;
+            text-transform: uppercase;
+        }
+
+        /* ⛽ 연료창 & 프레이즈창 디자인 (카드 형태) */
+        #fuel-display, #phrase-display {
+            background: rgba(46, 204, 113, 0.03);
+            border: 1px solid rgba(46, 204, 113, 0.1);
+            padding: 10px; font-family: 'Inconsolata', monospace;
+            border-radius: 2px;
+        }
+
+        /* 📦 인벤토리 & 액션 패널 (카드 테마) */
+        .inventory, .action-panel {
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            padding: 15px; border-radius: 2px;
+        }
+
+        /* 🎯 그리드 에지 보완 (그리드가 공중에 떠보이지 않게) */
+        .grid-container-wrapper {
+            background: rgba(0, 0, 0, 0.4);
+            border: 1px solid rgba(46, 204, 113, 0.3);
+            padding: 10px; position: relative;
+        }
+
+        #foglayer_01, #foglayer_02, #foglayer_03 { height: 100%; position: absolute; width: 200%; }
+
+        #foglayer_01 .image01, #foglayer_01 .image02,
+        #foglayer_02 .image01, #foglayer_02 .image02,
+        #foglayer_03 .image01, #foglayer_03 .image02 { float: left; height: 100%; width: 50%; }
+
+        /* 안개 이미지 소스 */
+        #foglayer_01 .image01, #foglayer_01 .image02 { background: url("https://raw.githubusercontent.com/danielstuart14/CSS_FOG_ANIMATION/master/fog1.png") center center/cover no-repeat transparent; }
+        #foglayer_02 .image01, #foglayer_02 .image02,
+        #foglayer_03 .image01, #foglayer_03 .image02 { background: url("https://raw.githubusercontent.com/danielstuart14/CSS_FOG_ANIMATION/master/fog2.png") center center/cover no-repeat transparent; }
+
+        /* 애니메이션 키프레임 */
+        #foglayer_01 { animation: foglayer_01_opacity 10s linear infinite, foglayer_moveme 15s linear infinite; }
+        #foglayer_02, #foglayer_03 { animation: foglayer_02_opacity 21s linear infinite, foglayer_moveme 13s linear infinite; }
+
+        @keyframes foglayer_01_opacity { 
+            0% { opacity: 0.5; } 22% { opacity: 0.9; } 40% { opacity: 0.6; } 
+            58% { opacity: 0.8; } 80% { opacity: 0.5; } 100% { opacity: 0.5; } 
+        }
+        @keyframes foglayer_02_opacity { 
+            0% { opacity: 0.7; } 25% { opacity: 0.4; } 50% { opacity: 0.5; } 
+            80% { opacity: 0.8; } 100% { opacity: 0.7; } 
+        }
+        @keyframes foglayer_03_opacity { 
+            0% { opacity: 1.0; } 27% { opacity: 0.6; } 52% { opacity: 0.9; } 
+            68% { opacity: 0.7; } 100% { opacity: 1.0; } 
+        }
+        @keyframes foglayer_moveme { 0% { left: 0; } 100% { left: -100%; } }
+
     </style>
 </head>
 <body>
@@ -401,25 +500,50 @@
 
     <div id="main-game">
         <div class="left-panel">
-            <div>&nbsp;</div>
-            <div class="name-label">플레이어 2: <span id="opp-name">대기 중</span> <span id="opp-v" class="v-mark">[V]</span></div>
-            <div id="opponent-grid" class="grid"></div>
+            <div class="panel-bracket bracket-tl"></div>
+            <div class="panel-bracket bracket-br"></div>
+
+            <div class="name-label">
+                <span style="opacity:0.5;">● HOSTILE:</span> 
+                <span id="opp-name">CONNECTING...</span> 
+                <span id="opp-v" class="v-mark">[READY]</span>
+            </div>
+
+            <div class="grid-container-wrapper">
+                <div style="position: relative; width: 100%; height: 210px;">
+                    <div id="opponent-grid" class="grid" style="width: 100%; margin: 0;"></div>
+                    <div class="fogwrapper">
+                        <div id="foglayer_01" class="fog"><div class="image01"></div><div class="image02"></div></div>
+                        <div id="foglayer_02" class="fog"><div class="image01"></div><div class="image02"></div></div>
+                        <div id="foglayer_03" class="fog"><div class="image01"></div><div class="image02"></div></div>
+                    </div>
+                </div>
+            </div>
 
             <div class="ctrl-group">
-                <button id="start-btn" onclick="handleButtonClick()">준비하기</button>
-                <button class="sub-btn" style="background:#fb8500;" onclick="resetPlacement()">초기화 🧹</button>
+                <button id="start-btn" onclick="handleButtonClick()">SYSTEM READY</button>
+                <button class="sub-btn" style="background:rgba(251, 133, 0, 0.2); border:1px solid #fb8500; color:#fb8500;" onclick="resetPlacement()">RESET 🧹</button>
             </div>
             
-            <div class="name-label">플레이어 1: <span id="my-name-display">-</span> <span id="my-v" class="v-mark">[V]</span></div>
-            <div id="fuel-display">⛽ 연료: <span id="current-fuel">8</span> / <span id="max-fuel">8</span></div>
-            <div id="action-panel" class="action-panel">
-                <button id="btn-ATTACK" class="action-btn active" onclick="setActionMode('ATTACK')">🎯 타격</button>
-                <button id="btn-SNIPE" class="action-btn" onclick="setActionMode('SNIPE')">🔫 저격 (-1⛽)</button>
-                <button id="btn-MOVE" class="action-btn" onclick="setActionMode('MOVE')">🏃 기동 (-2⛽)</button>
+            <div class="name-label">
+                <span style="opacity:0.5;">● COMMANDER:</span> 
+                <span id="my-name-display">-</span> 
+                <span id="my-v" class="v-mark">[READY]</span>
             </div>
+
+            <div style="display: flex; gap: 10px; align-items: center;">
+                <div id="fuel-display" style="flex: 1; color: #2ecc71;">ENERGY: <span id="current-fuel">8</span> / <span id="max-fuel">8</span></div>
+                <div id="phrase-display" style="flex: 1; color: #2ecc71; text-align: right;">PHRASE: [ 1 ]</div>
+            </div>
+
+            <div id="action-panel" class="action-panel">
+                <button id="btn-ATTACK" class="action-btn active" onclick="setActionMode('ATTACK')">🎯 ATTACK</button>
+                <button id="btn-SNIPE" class="action-btn" onclick="setActionMode('SNIPE')">🔫 SNIPE (-1)</button>
+                <button id="btn-MOVE" class="action-btn" onclick="setActionMode('MOVE')">🏃 MOVE (-2)</button>
+            </div>
+
             <div id="my-grid" class="grid" onmouseleave="clearGhost()"></div>
             <div id="unit-inventory" class="inventory"></div>
-            <div id="phrase-display" style="font-size: 1.05em; font-weight: bold; color: #22ff05; margin-top: 5px; margin-left: 5px;">[ 1 프레이즈 ]</div>
         </div>
 
         <div class="right-panel">
