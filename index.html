@@ -326,20 +326,17 @@
         .ctrl-group {display: flex; gap: 10px; justify-content: center; margin: 5px 0; flex-shrink: 0;}
         #start-btn, .sub-btn { flex: 1; max-width: 250px; padding: 6px 15px; font-family: 'Rajdhani', 'Noto Sans KR', sans-serif; font-size: 0.85rem;
             font-weight: 700; text-transform: uppercase; border-radius: 0px; cursor: pointer; transition: all 0.3s ease; }
-        #start-btn { 
-            background: rgba(12, 56, 31, 0.2); 
-            color: #59ff00; 
-            border: 1px solid #2ecc71; 
-        }
-        #start-btn:hover:not(:disabled) {
-            background: rgba(12, 56, 31, 0.2); 
-            box-shadow: 0 0 10px rgba(12, 56, 31, 0.2); 
+        #start-btn { background: rgba(5, 20, 10, 0.9); color: #09ff00; border: 1px solid #2ecc71; }
+        #start-btn:hover:not(:disabled) { /* 🔥 마우스 올렸을 때 (호버): 너무 밝아지지 않고 은은하게 빛남 */
+            background: rgba(12, 56, 31, 0.8); 
+            box-shadow: 0 0 15px rgba(9, 255, 0, 0.4);
         }
         #start-btn:disabled { 
-            background: rgba(255, 255, 255, 0.05); 
-            color: #666; 
-            border-color: #444; 
+            background: rgba(0, 0, 0, 0.6); 
+            color: #444; 
+            border-color: #333; 
             cursor: not-allowed;
+            box-shadow: none;
         }
         .sub-btn { 
             background: rgba(251, 133, 0, 0.1) !important; 
@@ -372,8 +369,7 @@
             cursor: not-allowed; box-shadow: none !important; text-shadow: none !important; }
         #fuel-display { display: none; font-weight: bold; color: #2980b9; font-size: 1.1em; background: #d6eaf8; padding: 5px; border-radius: 4px; text-align: center; }
         .moving-1x1 { box-shadow: 0 0 10px 3px #9b59b6 inset !important; } /* 선택된 1x1 유닛 시각 효과 */
-        /* 🌟 네온 후광이 흘러가는 애니메이션 */
-        /* 🎯 [신규 추가] 저격 조준경 & 타격 이펙트 CSS */
+
         #scope-layer {
             position: fixed; pointer-events: none; display: none;
             z-index: 4000; transform: translate(-50%, -50%);
@@ -402,7 +398,6 @@
             border-radius: 50%; transform: translate(-50%, -50%); box-shadow: 0 0 10px #ff0000; z-index: 4002;
         }
 
-        /* 타격 및 파티클 이펙트 */
         .hit {
             position: absolute; width: 100px; height: 100px;
             background: radial-gradient(circle, #fff, #ff0000, transparent);
@@ -421,12 +416,12 @@
         }
 
         .action-btn:disabled {
-            background: #555555 !important; /* 칙칙한 회색 */
+            background: #555555 !important; 
             color: #888888 !important;
-            cursor: not-allowed;           /* 마우스 커서 금지 모양 */
+            cursor: not-allowed;      
             border-color: #444444 !important;
-            opacity: 0.5;                  /* 반투명 처리 */
-            box-shadow: none !important;    /* 네온 효과 제거 */
+            opacity: 0.5;              
+            box-shadow: none !important;   
         }
 
         /* 🌫️ [신규 추가] 상대방 격자판 전장의 안개 (Fog of War) */
