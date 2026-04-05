@@ -359,6 +359,16 @@
             0% { transform: translate(-50%, -50%) translate(0, 0) scale(1); opacity: 1; }
             100% { transform: translate(-50%, -50%) translate(var(--tx), var(--ty)) scale(0); opacity: 0; }
         }
+
+        .action-btn:disabled {
+            background: #555555 !important; /* 칙칙한 회색 */
+            color: #888888 !important;
+            cursor: not-allowed;           /* 마우스 커서 금지 모양 */
+            border-color: #444444 !important;
+            opacity: 0.5;                  /* 반투명 처리 */
+            box-shadow: none !important;    /* 네온 효과 제거 */
+        }
+
     </style>
 </head>
 <body>
@@ -519,13 +529,23 @@
                     if(gameStatus === 'PLAYING' && isMyTurn) {
                         if (actionMode === 'MOVE') return alert("🏃 기동 모드입니다. 내 격자판의 1x1 함선을 클릭하세요.");
                         
-                        // 🎯 [수정됨] 저격 모드일 때 이펙트 터뜨리기
+                        // 서버로 보낼 현재 공격 타입을 미리 저장 (버그 방지용)
+                        const typeToEmit = actionMode; 
+
+                        // 🎯 [저격 모드 전용 로직]
                         if (actionMode === 'SNIPE') {
-                            // 마우스 클릭 좌표 따오기
+                            
+                            // 🚨 1. 안전장치: 클릭한 곳에 'sniper-line' 클래스가 없으면 차단!
+                            if (!oCell.classList.contains('sniper-line')) {
+                                addGameLog("[차단] 저격은 가이드라인(하늘색)이 쳐진 X좌표만 공격할 수 있습니다!");
+                                return; // 여기서 함수를 끝내버려서 총알이 안 나가게 함
+                            }
+
+                            // 2. 이펙트 좌표 따오기
                             const hitX = e.clientX;
                             const hitY = e.clientY;
                             
-                            // 1. 번쩍이는 원형 이펙트 생성
+                            // 3. 번쩍이는 원형 이펙트
                             const hit = document.createElement('div');
                             hit.className = 'hit';
                             hit.style.left = hitX + 'px';
@@ -533,21 +553,20 @@
                             document.body.appendChild(hit);
                             setTimeout(() => hit.remove(), 300);
 
-                            // 2. 파편 튀는 이펙트 생성 (createParticles 함수 호출)
+                            // 4. 파편 튀는 이펙트
                             createParticles(hitX, hitY);
 
-                            // 3. 기존: 사격 순간 가이드라인 제거
+                            // 5. 사격 순간 가이드라인 제거 & 일반 타격 모드로 복귀
                             renderSniperLines(false);
-                            
-                            // 4. 연사 방지: 한 발 쏘면 기본 타격 모드로 강제 복귀
                             setActionMode('ATTACK'); 
                         }
 
-                        // 서버로 공격 명령
-                        socket.emit('attack', { index: i, type: actionMode }); 
+                        // 🚀 최종 서버 발사: 저장해둔 typeToEmit('SNIPE' 또는 'ATTACK')을 보냄
+                        socket.emit('attack', { index: i, type: typeToEmit }); 
                     }
                     else if(gameStatus === 'PLAYING' && !isMyTurn) addGameLog("[차단] 지금은 내 턴이 아닙니다.");
                 };
+
                 oppGrid.appendChild(oCell);
                 
                 const mCell = document.createElement('div');
@@ -566,6 +585,7 @@
 
         // 🚨 신규 함수: 액션 버튼 클릭 시 모드 변경 (연료 체크 로직 추가!)
         function setActionMode(mode) {
+            if (!isMyTurn && gameStatus === 'PLAYING') return;
             // 현재 화면에 표시된 연료량을 숫자로 가져옵니다.
             const currentFuel = parseInt(document.getElementById('current-fuel').innerText) || 0;
 
@@ -1046,9 +1066,35 @@
         function updateTurn(turnId) {
             isMyTurn = (socket.id === turnId);
             const btn = document.getElementById('start-btn');
+            
+            // 1. 메인 버튼(준비/턴 표시) 상태 변경
             btn.innerText = isMyTurn ? "🔥 나의 턴" : "⏳ 상대 턴";
             btn.style.background = isMyTurn ? "#e74c3c" : "#34495e";
             document.getElementById('opponent-grid').className = isMyTurn ? "grid my-turn-border" : "grid";
+
+            // 2. 🎯 액션 버튼(타격, 저격, 기동) 활성화/비활성화 제어
+            const actionBtns = document.querySelectorAll('.action-btn');
+            actionBtns.forEach(button => {
+                // 내 턴이면 disabled 해제(false), 아니면 설정(true)
+                button.disabled = !isMyTurn;
+            });
+
+            // 3. 🛡️ 내 턴이 끝나면 조준경 및 가이드라인 즉시 강제 종료
+            if (!isMyTurn) {
+                renderSniperLines(false); // 가이드라인(하늘색) 끄기
+                
+                const scopeLayer = document.getElementById('scope-layer');
+                const reticleLayer = document.getElementById('reticle');
+                if (scopeLayer && reticleLayer) {
+                    scopeLayer.style.display = 'none';
+                    reticleLayer.style.display = 'none';
+                }
+                
+                // 액션 모드도 기본 'ATTACK'으로 리셋 (다음 턴에 조준경이 갑자기 뜨는 것 방지)
+                actionMode = 'ATTACK';
+                document.querySelectorAll('.action-btn').forEach(b => b.classList.remove('active'));
+                document.getElementById('btn-ATTACK').classList.add('active');
+            }
         }
 
         socket.on('gameOver', data => {
