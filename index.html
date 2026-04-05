@@ -1,1468 +1,463 @@
-<!DOCTYPE html>
-<html lang="ko">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>블록 찾기: 언더 더 레이더(Under the Radar)</title>
-    <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@300;400;500;600;700&amp;family=Noto+Sans+KR:wght@300;400;500;700;900&amp;family=Inconsolata:wght@400;700&amp;display=swap" rel="stylesheet">
-    <style>
-        body { font-family: 'Noto Sans KR', sans-serif; display: flex; flex-direction: column; height: 100vh; margin: 0; background: #000000; overflow: hidden; }
-        #login-screen { 
-            position: fixed; 
-            inset: 0; 
-            display: flex; 
-            flex-direction: column; 
-            align-items: center; 
-            justify-content: center; 
-            z-index: 1000; 
-            /* 배경 이미지가 사라지는 하단 바닥색 (흰색으로 유지) */
-            background-color: rgb(0, 0, 0); 
+const express = require('express');
+const http = require('http');
+const { Server } = require('socket.io');
+
+const app = express();
+const server = http.createServer(app);
+const io = new Server(server);
+
+// 방 데이터 저장소
+const rooms = {};
+
+// 🚨 이미지, CSS 등 정적 파일을 유저에게 보낼 수 있도록 허용하는 통행증 코드!
+app.use(express.static(__dirname)); 
+
+app.get('/', (req, res) => {
+    res.sendFile(__dirname + '/index.html');
+});
+
+io.on('connection', (socket) => {
+    let currentRoom = null;
+    let userName = "";
+
+    // 1. 방 입장
+    socket.on('joinRoom', (data) => {
+        const { roomCode, name } = data;
+        currentRoom = roomCode;
+        userName = name;
+        socket.join(roomCode);
+
+        if (!rooms[roomCode]) {
+            rooms[roomCode] = {
+                players: [], 
+                spectators: [], 
+                gameState: 'LOBBY',
+                phraseCount: 0,
+                turn: null
+            };
         }
 
-        /* 2. 🚨 배경 이미지 전용 (페이드 아웃 담당) */
-        #login-screen::before {
-            content: '';
-            position: absolute;
-            inset: 0;
-            
-            /* 원본의 0.6 투명도 필터와 이미지를 그대로 가져옴 */
-            background: linear-gradient(rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.3)), 
-                        url('Title_Img.png') no-repeat center top; /* 말림 방지용 top 고정 */
-            background-size: cover;
+        rooms[roomCode].spectators.push({ id: socket.id, name: userName });
+        updateRoomInfo(roomCode);
+        io.to(roomCode).emit('systemMsg', `${userName}님이 입장하셨습니다.`);
+    });
 
-            /* 🌟 상단은 100% 보이고, 하단으로 갈수록 투명해지는 마스크 */
-            -webkit-mask-image: linear-gradient(to bottom, black 5%, transparent 50%);
-            mask-image: linear-gradient(to bottom, black 5%, transparent 90%);
-            
-            /* 마스크 크기를 배경과 일치시킴 */
-            -webkit-mask-size: 100% 100%;
-            mask-size: 100% 100%;
+    // 2. 역할 변경 (플레이어 <-> 관전자)
+    socket.on('changeRole', (role) => {
+        if (!currentRoom) return;
+        const room = rooms[currentRoom];
+        if (room.gameState !== 'LOBBY') return;
 
-            z-index: -1; /* 입력창(h1, input 등)보다 뒤로 보냄 */
-        }
+        room.players = room.players.filter(p => p.id !== socket.id);
+        room.spectators = room.spectators.filter(s => s.id !== socket.id);
 
-        #main-game { font-family: 'Inconsolata', monospace; display: none; flex: 1; padding: 10px; gap: 15px; overflow-y: auto; 
-        background: linear-gradient(rgba(0, 0, 0, 0.7), rgba(0, 0, 0, 0.7)), 
-                url('Steal_Back.png') no-repeat center center;
-        background-size: cover; /* 이미지가 화면에 꽉 차게 */
-        background-attachment: fixed; /* 스크롤해도 배경은 고정 (간지 포인트) */
+        if (role === 'player') {
+            if (room.players.length < 2) {
+                room.players.push({ 
+                    id: socket.id, 
+                    name: userName, 
+                    isReady: false, 
+                    units: [], 
+                    placed: false 
+                });
+            } else {
+                socket.emit('systemMsg', '플레이어 자리가 꽉 찼습니다.');
+                room.spectators.push({ id: socket.id, name: userName });
+            }
+        } else {
+            room.spectators.push({ id: socket.id, name: userName });
         }
+        updateRoomInfo(currentRoom);
+    });
 
-        /* 🌟 네온 후광이 흘러가는 애니메이션 */
-        @keyframes sparkle {
-            from { background-position: 0% 100%; }
-            to { background-position: 200% 100%; }
-        }
-
-        /* 🎯 3층 (최상단): 글자 영역 & 버튼 틀 */
-        #join-btn {
-            position: relative;
-            background: transparent !important; /* 본체 배경은 아예 투명하게 비웁니다 */
-            color: #032709 !important; /* 글자는 녹색 */
-            
-            border: none;
-            padding: 12px 30px;
-            font-size: 1.1em;
-            cursor: pointer;
-            font-weight: 900;
-            z-index: 10;
-        }
-
-        /* ✨ 1층 (최하단): 가장 밑에 깔리는 네온 후광 장판 */
-        #join-btn::before {
-            content: '';
-            position: absolute;
-            inset: -4px; /* 버튼 크기보다 4px 삐져나오게 설정 (테두리 역할) */
-            border-radius: 6px;
-            z-index: -2; /* 가장 밑바닥으로 보냄 */
-            
-            background: linear-gradient(
-                90deg,
-                #7fef81 0%, #a1ca1a 11%, #316106 22%, #29fc04 33%,
-                #3bff1d 44%, #406e0c 55%, #1c862c 66%, #70ff1e 77%,
-                #126906 88%, #7FEFBD 100%
-            );
-            background-size: 300% 100%;
-            animation: sparkle 4s infinite linear;
-            filter: blur(4px);
-        }
-
-        /* 🛡️ 2층 (중간): 네온을 덮어버리는 완벽한 흰색 뚜껑 */
-        #join-btn::after {
-            content: '';
-            position: absolute;
-            inset: 0; /* 버튼 본체 크기에 딱 맞춤 */
-            border-radius: 4px;
-            background: #0fa40f !important; /* 완벽한 흰색 뚜껑 */
-            z-index: -1; /* 네온(-2)보다 위에, 글자보단 아래에 배치! */
-        }
-
-        /* 🎬 타이틀 전용 깜빡임 애니메이션 키프레임 */
-        @keyframes flashLight {
-            to { opacity: 1; }
-        }
-        @keyframes flashDark {
-            to { opacity: 0.7; }
-        }
-
-        /* 📦 타이틀 전체 정렬용 컨테이너 */
-        .title-container {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            margin-bottom: 30px;
-            text-align: center;
-        }
-
-        /* 🔝 상단 영문 부제 */
-        .title-top {
-            color: #a0c0a4;
-            font-size: 1rem;
-            letter-spacing: 8px;
-            margin-bottom: -10px;
-            z-index: 2;
-            font-family: 'Rajdhani', sans-serif;
-        }
-
-        /* 🎯 메인 타이틀 기본 설정 */
-        .neon-title {
-            margin: 10px 0;
-            font-size: 3em; 
-            color: rgb(255, 255, 255);
-            text-shadow: 0 0 15px rgba(0,0,0,0.5);
-        }
-
-        /* ✨ 메인 타이틀: 밝게 터지는 효과 ("언더 더 레이더") */
-        .neon-title .flicker-light {
-            position: relative;
-            display: inline-block;
-        }
-        .neon-title .flicker-light::before {
-            content: "";
-            position: absolute;
-            left: 0;
-            top: -10%;
-            width: 100%;
-            height: 120%;
-            background: #e0ffd7;
-            filter: blur(12px);
-            opacity: 0;
-            animation: flashLight 0.4s ease-out alternate infinite;
-            z-index: -1;
-        }
-
-        /* ⬇️ 하단 영문 캐치프레이즈 묶음 */
-        .title-bottom {
-            display: flex;
-            flex-direction: column;
-            color: #8a9ba8;
-            font-size: 0.9rem;
-            letter-spacing: 3px;
-            font-style: italic;
-            line-height: 1.4;
-            margin-top: 5px;
-        }
-
-        /* 💡 하단 영문 3줄: 어둡게 고장 난 듯 지지직거리는 효과 */
-        .title-bottom .flicker-dark {
-            opacity: 0.1;
-            animation: flashDark 0.4s ease-out alternate infinite;
-            display: block; /* 줄바꿈 유지 */
-        }
-
-        .login-content {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-        }
-
-        /* 💀 2. 텍스트 제목(strong) 디자인 (작고 얇게, 자간 넓게) */
-        .right-panel strong {
-            display: flex;
-            justify-content: space-between; /* 양쪽 정렬용 */
-            font-size: 0.75rem;
-            letter-spacing: 0.1em;
-            color: rgba(248, 113, 113, 0.8);
-            margin-bottom: 8px;
-            padding-bottom: 4px;
-            border-bottom: 1px solid rgba(127, 29, 29, 0.3); /* 제목 아래 얇은 선 */
-        }
-
-        /* 💀 3. 로그 및 채팅 영역 (어두운 이너 박스) */
-        .log-area, .chat-area {
-            background-color: rgba(20, 0, 0, 0.5); 
-            border: 1px solid rgba(220, 38, 38, 0.2);
-            border-radius: 4px;
-            padding: 8px;
-            margin-bottom: 15px;
-
-            /* 🚨 날아간 박스 형태 복구! (이 두 줄을 추가해 주세요) */
-            height: 200px; /* 로그창 높이 (너무 작으면 200px 등으로 늘려주세요) */
-            overflow-y: auto; /* 글이 넘치면 스크롤 생성 */
-        }
-
-        /* 🩸 4. 얇은 빨간색 스크롤바 커스텀 */
-        .log-area::-webkit-scrollbar, .chat-area::-webkit-scrollbar {
-            width: 4px;
-        }
-        .log-area::-webkit-scrollbar-thumb, .chat-area::-webkit-scrollbar-thumb {
-            background: rgba(220, 38, 38, 0.5);
-            border-radius: 2px;
-        }
-
-        /* 💀 5. 채팅 입력창 & 버튼 테마 */
-        .chat-input-group input {
-            background-color: rgba(0, 0, 0, 0.6);
-            border: 1px solid rgba(220, 38, 38, 0.5);
-            color: rgb(255, 255, 255);
-            border-radius: 4px;
-            outline: none;
-        }
-        .chat-input-group input:focus {
-            border-color: #ef4444; /* 클릭하면 테두리 밝아짐 */
-        }
-
-        .chat-input-group button, .user-list-box button {
-            background-color: rgba(69, 10, 10, 0.5);
-            border: 1px solid rgba(220, 38, 38, 0.6);
-            color: #f87171;
-            border-radius: 4px;
-            cursor: pointer;
-            transition: all 0.2s;
-        }
-        .chat-input-group button:hover, .user-list-box button:hover {
-            background-color: rgba(127, 29, 29, 0.5);
-            border-color: #ef4444;
-            color: #fca5a5;
-        }
-
-        /* 💀 6. 접속자 명단 박스 여백 조절 */
-        .user-list-box {
-            border-top: 1px solid rgba(127, 29, 29, 0.3);
-            padding-top: 10px;
-        }
-        .log-area, .chat-area { flex: 1; background: rgba(31, 22, 22, 0.483); border: 1px solid #ce2d2d; overflow-y: auto; padding: 10px; font-size: 0.85em; border-radius: 5px; }
-
-
-
-
-        /* 주요 패널 */
-        .left-panel { 
-            flex: 2; display: flex; flex-direction: column; 
-            gap: 8px; /* 기존 12px에서 8px로 축소 */
-            padding: 15px 20px; /* 위아래 패딩을 줄여서 바닥 공간 확보 */
-            background: rgba(8, 0, 0, 0.95); 
-            border: 1px solid rgba(44, 220, 38, 0.2); 
-            border-radius: 4px; position: relative;
-            box-shadow: inset 0 0 20px rgba(46, 204, 113, 0.05);
-            overflow-y: auto; /* 만약 화면이 작아도 스크롤되게 보호 */
-        }
-        .right-panel {
-            flex: 1; display: flex; flex-direction: column; gap: 10px; min-width: 250px;
-            background-color: rgba(0, 0, 0, 0.9);
-            border: 1px solid rgba(220, 38, 38, 0.5); 
-            border-radius: 8px;
-            box-shadow: 0 4px 15px rgba(127, 29, 29, 0.4);
-            padding: 16px;
-            color: rgb(255, 255, 255);
-            font-family: 'Arial', sans-serif;
-            /* (width, 위치 등 기존 레이아웃 설정이 있다면 여기에 합쳐주세요) */
-        }
-        .name-label { font-size: 1.1em; font-weight: bold; display: flex; align-items: center; gap: 8px; margin: 2px 0; color: rgb(255, 255, 255); margin-bottom: 1%; margin-left: 15px;}
-        .v-mark { color: #4CAF50; font-weight: 900; display: none; }
-
-        /* 1. 🧱 공통 뼈대 (크기, 격자 칸수, 테두리 등은 그대로 공유) */
-        .grid { 
-            width: 95%; margin: 0 auto; height: 210px; 
-            border: 2px solid #62ff00; 
-            display: grid; 
-            grid-template-columns: repeat(14, 1fr); 
-            grid-template-rows: repeat(10, 1fr); 
-            flex-shrink: 0;
-
-            /* 💡 마법의 주문: 테두리를 박스 크기 '안쪽'으로 계산하게 만듦 */
-            box-sizing: border-box; 
-        }
-
-        /* 2. 🎯 상대방 격자판 전용 (Grid1.jpg) */
-        #opponent-grid {
-            position: absolute; /* 부모 래퍼를 기준으로 띄움 */
-            top: 0; left: 0; right: 0; bottom: 0; /* 상하좌우 여백 없이 쫙 폄 */
-            width: 100% !important; 
-            height: 100% !important;
-            margin: auto !important; /* 중앙 정렬 쐐기박기 */
-            
-            background: linear-gradient(rgba(125, 125, 125, 0), rgba(0, 0, 0, 0)), 
-                        url('Grid1.jpg') no-repeat center center;
-            background-size: cover; 
-        }
-
-        /* 3. 🛡️ 내 격자판 전용 (Grid2.jpg) */
-        #my-grid {
-            background: linear-gradient(rgba(125, 125, 125, 0.054), rgba(0, 0, 0, 0.036)), 
-                        url('Grid2.jpg') no-repeat center center;
-            background-size: cover; 
-        }
-        .grid div { border: 0.1px solid #7cffa1aa; cursor: pointer; box-sizing: border-box; }
+    // 3. 준비 완료 버튼 토글
+    socket.on('toggleReady', () => {
+        const room = rooms[currentRoom];
+        if (!room || room.gameState !== 'LOBBY') return;
         
-        .my-unit { background: #16bd16 !important; border: 1px solid #e4e4e4 !important; }
-        .hit-unit { background: #e74c3c !important; border: 1px solid #c0392b !important; }
-        .miss-cell { background: #5a6364 !important; }
-        .sniper-line { background: rgba(0, 225, 255, 0.211) !important; border: 1px dashed #000000 !important; }
+        const player = room.players.find(p => p.id === socket.id);
+        if (player) {
+            player.isReady = !player.isReady;
+            updateRoomInfo(currentRoom);
+        }
+    });
 
-        /* 🚨 강철 상자 전용 갈색 CSS 추가 */
-        .box-unit { background: #452a24 !important; border: 1px solid #5d4037 !important; }
-        /* 🚨 시각적 마스터키 CSS 완벽 구현 🚨 */
-        .ghost { background: rgba(46, 204, 113, 0.4); } 
-        .ghost-purple { background: rgba(155, 89, 182, 0.6); } /* 움직이는 보라색 유닛 */
-        .ghost-original { background: rgba(255, 255, 255, 0.6); border: 2px dashed #ecf0f1 !important; } /* 제자리 흰색 껍데기 */
-        .ghost-invalid { background: rgba(231, 76, 60, 0.4); }
-
-        .inventory { display: flex; gap: 5px; flex-wrap: wrap; background: #f5daa9; padding: 8px; border-radius: 5px; margin-bottom: 5px; min-height: 45px; }
-        .unit-btn { padding: 6px 10px; border: 1px solid #333; cursor: pointer; background: white; font-weight: bold; font-size: 0.85em; }
-        .unit-btn.active { background: #f26419; color: white; border-color: #421c07; }
+    // 4. 게임 시작 버튼
+    socket.on('startGame', () => {
+        const room = rooms[currentRoom];
+        if (!room) return;
         
-        button { cursor: pointer; border-radius: 4px; border: 1px solid #999; font-weight: bold; }
-        .ctrl-group {display: flex; gap: 10px; justify-content: center; margin: 5px 0; flex-shrink: 0;}
-        #start-btn, .sub-btn { flex: 1; max-width: 250px; padding: 6px 15px; font-family: 'Rajdhani', 'Noto Sans KR', sans-serif; font-size: 0.85rem;
-            font-weight: 700; text-transform: uppercase; border-radius: 0px; cursor: pointer; transition: all 0.3s ease; }
-        #start-btn { 
-            background: rgba(46, 204, 113, 0.1); 
-            color: #2ecc71; 
-            border: 1px solid #2ecc71; 
+        if (room.players.length === 2 && room.players.every(p => p.isReady)) {
+            room.gameState = 'PLACING';
+            io.to(currentRoom).emit('startPlacing');
+            updateRoomInfo(currentRoom);
+        } else {
+            socket.emit('systemMsg', '모든 플레이어가 준비되어야 시작할 수 있습니다.');
         }
-        #start-btn:hover:not(:disabled) {
-            background: rgba(46, 204, 113, 0.3);
-            box-shadow: 0 0 10px rgba(46, 204, 113, 0.3);
-        }
-        #start-btn:disabled { 
-            background: rgba(255, 255, 255, 0.05); 
-            color: #666; 
-            border-color: #444; 
-            cursor: not-allowed;
-        }
-        .sub-btn { 
-            background: rgba(251, 133, 0, 0.1) !important; 
-            color: #fb8500 !important; 
-            border: 1px solid #fb8500 !important; 
-        }
-        .sub-btn:hover {
-            background: rgba(251, 133, 0, 0.3) !important;
-            box-shadow: 0 0 10px rgba(251, 133, 0, 0.3);
-        }
+    });
+
+    // 5. 배치 및 전술 기동 확정 로직
+    socket.on('finishPlacing', (units) => {
+        const room = rooms[currentRoom];
         
-        .chat-input-group { display: flex; gap: 5px; }
-        .user-list-box { background: #000000; padding: 10px; border-radius: 5px; font-size: 0.9em; display: flex; flex-direction: column; gap: 5px; }
-        .my-turn-border { 
-            /* border를 4px로 바꾸면 격자 안쪽 공간이 줄어들어 칸이 찌그러집니다. 
-            두께는 2px로 유지하되, 레이아웃에 영향을 안 주는 'outline'과 '그림자'로 시각 효과만 극대화! */
-            border-color: #ff3333 !important; 
-            outline: 2px solid #ff3333 !important; /* 바깥쪽에 2px 선 추가 (레이아웃 안 밀림) */
-            outline-offset: 0px;
-            box-shadow: 0 0 15px rgba(255, 51, 51, 0.8), inset 0 0 10px rgba(255, 51, 51, 0.5) !important;
-        }
-
-        .action-panel {display: none; gap: 10px; margin: 5px 0 15px 0; flex-shrink: 0; }
-        .action-btn {flex: 1; padding: 10px; background: rgba(8, 0, 0, 0.8); border: 1px solid rgba(255, 255, 255, 0.15); color: rgba(255, 255, 255, 0.5);
-            font-family: 'Rajdhani', 'Noto Sans KR', sans-serif; font-size: 0.95rem; font-weight: 700; letter-spacing: 1px; border-radius: 0px; cursor: pointer; 
-            transition: all 0.3s ease; text-transform: uppercase; }
-        .action-btn:hover:not(:disabled) {border-color: rgba(46, 204, 113, 0.6); color: #2ecc71; background: rgba(46, 204, 113, 0.05); }
-        .action-btn.active {background: rgba(231, 76, 60, 0.15); color: #e74c3c; border: 1px solid #e74c3c; box-shadow: inset 0 0 10px rgba(231, 76, 60, 0.2); text-shadow: 0 0 5px rgba(231, 76, 60, 0.5);}
-        .action-btn:disabled {background: rgba(255, 255, 255, 0.02) !important; border-color: rgba(255, 255, 255, 0.05) !important; color: rgba(255, 255, 255, 0.1) !important;
-            cursor: not-allowed; box-shadow: none !important; text-shadow: none !important; }
-        #fuel-display { display: none; font-weight: bold; color: #2980b9; font-size: 1.1em; background: #d6eaf8; padding: 5px; border-radius: 4px; text-align: center; }
-        .moving-1x1 { box-shadow: 0 0 10px 3px #9b59b6 inset !important; } /* 선택된 1x1 유닛 시각 효과 */
-        /* 🌟 네온 후광이 흘러가는 애니메이션 */
-        /* 🎯 [신규 추가] 저격 조준경 & 타격 이펙트 CSS */
-        #scope-layer {
-            position: fixed; pointer-events: none; display: none;
-            z-index: 4000; transform: translate(-50%, -50%);
-            width: 200vw; height: 200vh;
-            backdrop-filter: blur(10px) grayscale(1);
-            -webkit-mask-image: radial-gradient(circle 100px at center, transparent 100%, black 100%);
-            mask-image: radial-gradient(circle 100px at center, transparent 100%, black 100%);
-            -webkit-mask-repeat: no-repeat; mask-repeat: no-repeat;
-        }
-
-        #reticle {
-            position: fixed; top: 50%; left: 50%; width: 200px; height: 200px;
-            transform: translate(-50%, -50%); border: 2px solid #ff0000; border-radius: 50%;
-            pointer-events: none; display: none; z-index: 4001; box-shadow: 0 0 15px #ff0000;
-        }
-        #reticle::before {
-            content: ''; position: absolute; top: 50%; left: 50%; width: 100vw; height: 2px;
-            background: rgba(255, 0, 0, 0.6); box-shadow: 0 0 8px #ff0000; transform: translate(-50%, -50%);
-        }
-        #reticle::after {
-            content: ''; position: absolute; left: 50%; top: 50%; width: 2px; height: 100vh;
-            background: rgba(255, 0, 0, 0.6); box-shadow: 0 0 8px #ff0000; transform: translate(-50%, -50%);
-        }
-        #center-dot {
-            position: absolute; top: 50%; left: 50%; width: 6px; height: 6px; background: #ff0000;
-            border-radius: 50%; transform: translate(-50%, -50%); box-shadow: 0 0 10px #ff0000; z-index: 4002;
-        }
-
-        /* 타격 및 파티클 이펙트 */
-        .hit {
-            position: absolute; width: 100px; height: 100px;
-            background: radial-gradient(circle, #fff, #ff0000, transparent);
-            border-radius: 50%; transform: translate(-50%, -50%);
-            animation: bang 0.3s forwards; z-index: 4003; pointer-events: none;
-        }
-        @keyframes bang { from { transform: translate(-50%, -50%) scale(0); opacity: 1; } to { transform: translate(-50%, -50%) scale(2); opacity: 0; } }
-
-        .particle {
-            position: absolute; background: #ff0000; border-radius: 50%;
-            pointer-events: none; z-index: 4004; animation: fly 0.6s ease-out forwards;
-        }
-        @keyframes fly {
-            0% { transform: translate(-50%, -50%) translate(0, 0) scale(1); opacity: 1; }
-            100% { transform: translate(-50%, -50%) translate(var(--tx), var(--ty)) scale(0); opacity: 0; }
-        }
-
-        .action-btn:disabled {
-            background: #555555 !important; /* 칙칙한 회색 */
-            color: #888888 !important;
-            cursor: not-allowed;           /* 마우스 커서 금지 모양 */
-            border-color: #444444 !important;
-            opacity: 0.5;                  /* 반투명 처리 */
-            box-shadow: none !important;    /* 네온 효과 제거 */
-        }
-
-        /* 🌫️ [신규 추가] 상대방 격자판 전장의 안개 (Fog of War) */
-        .fogwrapper {
-            position: absolute;
-            top: 0; left: 0;
-            width: 100%; height: 100%;
-            filter: grayscale(0.2) saturate(1.2) sepia(0.2);
-            
-            /* 💡 조준경(4000)보단 아래, 격자판 바닥보단 위 */
-            z-index: 5; 
-            pointer-events: none; /* 🚨 필수: 안개가 클릭을 막지 않게 통과시킴 */
-            overflow: hidden; /* 🚨 필수: 안개가 격자판 밖으로 새어나가지 않게 자름 */
-            border-radius: 0px; /* 에지 이미지를 쓴다면 테두리에 맞게 조절하세요 */
-        }
-
-        /* 💠 모서리 브라켓 디자인 (공통) */
-        .panel-bracket {
-            position: absolute; width: 15px; height: 15px; 
-            border-color: rgba(46, 204, 113, 0.4); border-style: solid; 
-            pointer-events: none;
-        }
-        .bracket-tl { top: 0; left: 0; border-width: 3px 0 0 3px; }
-        .bracket-br { bottom: 0; right: 0; border-width: 0 3px 3px 0; }
-
-        /* 🏷️ 이름표 및 레이블 스타일 (Rajdhani 폰트 적용) */
-        .name-label { 
-            font-family: 'Rajdhani', sans-serif;
-            font-size: 0.9rem; font-weight: 700; 
-            letter-spacing: 2px; color: #2ecc71; 
-            border-bottom: 1px solid rgba(46, 204, 113, 0.2);
-            padding-bottom: 8px; margin: 5px 0 10px 0;
-            text-transform: uppercase;
-        }
-
-        /* ⛽ 연료창 & 프레이즈창 디자인 (카드 형태) */
-        #fuel-display, #phrase-display {
-            background: rgba(46, 204, 113, 0.03);
-            border: 1px solid rgba(46, 204, 113, 0.1);
-            padding: 10px; font-family: 'Inconsolata', monospace;
-            border-radius: 2px;
-        }
-
-        /* 📦 인벤토리 & 액션 패널 (카드 테마) */
-        .inventory, .action-panel {
-            background: rgba(255, 255, 255, 0.02);
-            border: 1px solid rgba(255, 255, 255, 0.05);
-            padding: 15px; border-radius: 2px;
-        }
-
-        /* 🎯 그리드 에지 보완 (그리드가 공중에 떠보이지 않게) */
-        .grid-container-wrapper {
-            background: rgba(0, 0, 0, 0.4);
-            border: 1px solid rgba(46, 204, 113, 0.3);
-            padding: 10px; position: relative;
-        }
-
-        #foglayer_01, #foglayer_02, #foglayer_03 { height: 100%; position: absolute; width: 200%; }
-
-        #foglayer_01 .image01, #foglayer_01 .image02,
-        #foglayer_02 .image01, #foglayer_02 .image02,
-        #foglayer_03 .image01, #foglayer_03 .image02 { float: left; height: 100%; width: 50%; }
-
-        /* 안개 이미지 소스 */
-        #foglayer_01 .image01, #foglayer_01 .image02 { background: url("https://raw.githubusercontent.com/danielstuart14/CSS_FOG_ANIMATION/master/fog1.png") center center/cover no-repeat transparent; }
-        #foglayer_02 .image01, #foglayer_02 .image02,
-        #foglayer_03 .image01, #foglayer_03 .image02 { background: url("https://raw.githubusercontent.com/danielstuart14/CSS_FOG_ANIMATION/master/fog2.png") center center/cover no-repeat transparent; }
-
-        /* 애니메이션 키프레임 */
-        #foglayer_01 { animation: foglayer_01_opacity 10s linear infinite, foglayer_moveme 15s linear infinite; }
-        #foglayer_02, #foglayer_03 { animation: foglayer_02_opacity 21s linear infinite, foglayer_moveme 13s linear infinite; }
-
-        @keyframes foglayer_01_opacity { 
-            0% { opacity: 0.5; } 22% { opacity: 0.9; } 40% { opacity: 0.6; } 
-            58% { opacity: 0.8; } 80% { opacity: 0.5; } 100% { opacity: 0.5; } 
-        }
-        @keyframes foglayer_02_opacity { 
-            0% { opacity: 0.7; } 25% { opacity: 0.4; } 50% { opacity: 0.5; } 
-            80% { opacity: 0.8; } 100% { opacity: 0.7; } 
-        }
-        @keyframes foglayer_03_opacity { 
-            0% { opacity: 1.0; } 27% { opacity: 0.6; } 52% { opacity: 0.9; } 
-            68% { opacity: 0.7; } 100% { opacity: 1.0; } 
-        }
-        @keyframes foglayer_moveme { 0% { left: 0; } 100% { left: -100%; } }
-
-    </style>
-</head>
-<body>
-    <div id="login-screen">
-        <div class="login-bg-layer"></div>
-
-        <div class="login-content">
-            
-            <div class="title-container">
-                <div class="title-top" style="margin-top: 200px;">UNDER THE RADAR</div>
-                
-                <h1 class="neon-title">
-                    <span class="flicker-light">언더 더 레이더</span>
-                </h1>
-                
-                <div class="title-bottom">
-                    <span class="flicker-dark">One Step Ahead</span>
-                    <span class="flicker-dark">of the</span>
-                    <span class="flicker-dark">Unseen</span>
-                </div>
-            </div>
-            
-            <div style="margin-top: 40px; margin-bottom: 10px; display: flex; flex-direction: column; gap: 5px;">
-                <input type="text" id="name-input" placeholder="이름 입력" style="padding: 10px; width: 150px;" value="테스터">
-                <input type="number" id="room-input" placeholder="방 번호" style="padding: 10px; width: 150px;" value="1">
-            </div>
-            <button id="join-btn" onclick="joinGame()" style="margin-top: 25px;">입장하기</button>
-        </div>
-    </div>
-
-    <div id="main-game">
-        <div class="left-panel">
-            <div class="panel-bracket bracket-tl"></div>
-            <div class="panel-bracket bracket-br"></div>
-
-            <div class="name-label">
-                <span id="opp-role" style="opacity:0.5;">● HOSTILE:</span> 
-                <span id="opp-name">대기 중</span> 
-                <span id="opp-v" class="v-mark" style="display: none;">[READY]</span>
-            </div>
-
-            <div class="grid-container-wrapper">
-                <div style="position: relative; width: 100%; height: 210px;">
-                    <div id="opponent-grid" class="grid" style="width: 100%; margin: 0;"></div>
-                    <div class="fogwrapper">
-                        <div id="foglayer_01" class="fog"><div class="image01"></div><div class="image02"></div></div>
-                        <div id="foglayer_02" class="fog"><div class="image01"></div><div class="image02"></div></div>
-                        <div id="foglayer_03" class="fog"><div class="image01"></div><div class="image02"></div></div>
-                    </div>
-                </div>
-            </div>
-
-            <div class="ctrl-group">
-                <button id="start-btn" onclick="handleButtonClick()">SYSTEM READY</button>
-                
-                <button id="reset-btn" class="sub-btn" style="display: none; background:rgba(251, 133, 0, 0.2); border:1px solid #fb8500; color:#fb8500;" onclick="resetPlacement()">RESET 🧹</button>
-            </div>
-            
-            <div class="name-label">
-                <span id="my-role" style="opacity:0.5;">● COMMANDER:</span> 
-                <span id="my-name-display">대기 중</span> 
-                <span id="my-v" class="v-mark" style="display: none;">[READY]</span>
-            </div>
-
-            <div style="display: flex; gap: 10px; align-items: center;">
-                <div id="fuel-display" style="flex: 1; color: #2ecc71;">ENERGY: <span id="current-fuel">8</span> / <span id="max-fuel">8</span></div>
-                <div id="phrase-display" style="flex: 1; color: #2ecc71; text-align: right;">PHRASE: [ 1 ]</div>
-            </div>
-
-            <div id="action-panel" class="action-panel">
-                <button id="btn-ATTACK" class="action-btn active" onclick="setActionMode('ATTACK')">🎯 ATTACK</button>
-                <button id="btn-SNIPE" class="action-btn" onclick="setActionMode('SNIPE')">🔫 SNIPE (-1)</button>
-                <button id="btn-MOVE" class="action-btn" onclick="setActionMode('MOVE')">🏃 MOVE (-2)</button>
-            </div>
-
-            <div id="my-grid" class="grid" onmouseleave="clearGhost()"></div>
-            <div id="unit-inventory" class="inventory"></div>
-        </div>
-
-        <div class="right-panel">
-            <strong>📊 게임 로그</strong>
-
-            <div id="game-log" class="log-area"></div>
-            <style>
-            @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
-            </style>
-            
-            <strong>
-                <span>💬 실시간 채팅</span>
-                <span style="font-size: 9px; color: rgba(239, 68, 68, 0.5); animation: pulse 2s infinite; font-weight: normal;">● LIVE</span>
-            </strong>
-            <div id="chat-log" class="chat-area"></div>
-            <div class="chat-input-group">
-                <input type="text" id="chat-input" style="flex:1; padding: 5px;" onkeypress="if(event.keyCode==13) sendChat()">
-                <button onclick="sendChat()" style="padding: 5px 15px;">전송</button>
-            </div>
-
-            <div class="user-list-box">
-                <strong>👥 접속자 명단</strong>
-                <div id="player-list">플레이어: </div>
-                <div id="spectator-list">관전자: </div>
-                <div style="display: flex; gap: 5px; margin-top: 5px;">
-                    <button onclick="changeRole('player')" style="flex:1; font-size: 0.8em; padding: 5px;">플레이어로 가기</button>
-                    <button onclick="changeRole('spectator')" style="flex:1; font-size: 0.8em; padding: 5px;">관전자로 가기</button>
-                </div>
-                    <button onclick="openManual()" 
-                                style="width:100%; background:#de28287e; color:#ffffffd9; margin-top:10px; border:none; padding:10px 20px; 
-                                    font-family:'Rajdhani', sans-serif; font-weight:900; cursor:pointer; border-radius:4px;
-                                    box-shadow: 0 0 10px rgba(46, 204, 113, 0.3); transition: 0.2s;
-                                    /* 💡 레이아웃: 아이콘과 텍스트 중앙 정렬 */
-                                    display: flex; align-items: center; justify-content: center; gap: 10px;">
-                        
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="opacity: 0.8;">
-                            <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 17h-2v-2h2v2zm2.07-7.75l-.9.92C13.45 12.9 13 13.5 13 15h-2v-.5c0-1.1.45-2.1 1.17-2.83l1.24-1.26c.37-.36.59-.86.59-1.41 0-1.1-.9-2-2-2s-2 .9-2 2H8c0-2.21 1.79-4 4-4s4 1.79 4 4c0 .88-.36 1.68-.93 2.25z" fill="#ffffffd9"/>
-                        </svg>
-
-                        OPERATIONAL MANUAL (게임 설명서 보기)
-                    </button>
-                </div>
-            </div>
-
-            <div id="manual-layer" style="display:none; position:fixed; inset:0; z-index:5000; background:rgba(0,0,0,0.9); backdrop-filter:blur(5px);">
-                <div style="position:relative; width:95%; height:95%; margin:1.5% auto; border:1px solid #2ecc71; box-shadow: 0 0 30px rgba(46,204,113,0.3);">
-                    <iframe src="manual.html" id="manual-frame" style="width:100%; height:100%; border:none;"></iframe>
-                </div>
-            </div>
-        </div>
-        <div id="scope-layer"></div>
-            <div id="reticle"><div id="center-dot"></div></div>
-    </div>
-
-    <script src="/socket.io/socket.io.js"></script>
-    <script>
-        const socket = (typeof io !== 'undefined') ? io() : { emit: ()=>{}, on: ()=>{} };
-        let myName = "", myRoom = "", myUnits = [], isMyTurn = false;
+        if (!room || (room.gameState !== 'PLACING' && room.gameState !== 'MOVING')) return;
         
-        let gameStatus = "LOBBY"; 
-        let selectedUnitType = null; 
-        let isPlayer = false; 
+        const player = room.players.find(p => p.id === socket.id);
+        if (!player) return;
 
-        // 🚨 신규 변수: 액션 모드 및 기동함선 선택용
-        let actionMode = 'ATTACK'; // 'ATTACK', 'SNIPE', 'MOVE'
-        let selected1x1Idx = -1; // 🏃 기동 모드에서 선택된 내 1x1 유닛 좌표
+        if (room.gameState === 'MOVING') {
+            // ✅ 버그 수정 핵심 부분
+            // 기존 코드: player.units = units → 서버가 기억하던 피격 기록이 싹 날아감
+            // 수정 코드: 좌표(cells)만 바꾸고, 피격 기록(hitCells/isHit)은 그대로 보존
+            const typePool = {};
+            player.units.forEach(u => {
+                if (!typePool[u.type]) typePool[u.type] = [];
+                typePool[u.type].push(u);
+            });
 
-        // 🚨 1번 규칙: 기동 단계에서 원래 위치를 저장할 변수 
-        let movingOriginalState = null; 
+            units.forEach(newUnit => {
+                const pool = typePool[newUnit.type];
+                if (pool && pool.length > 0) {
+                    pool.shift().cells = newUnit.cells; // 좌표만 덮어쓰기
+                }
+            });
 
-        const UNIT_SHAPES = {
-            'ㄷ': [[0,0], [1,0], [0,1], [0,2], [1,2]],
-            'L':  [[0,0],[0,1],[0,2],[1,2]],
-            'T':  [[0,0],[1,0],[2,0],[1,1]],
-            'ㅗ': [[0,1],[1,0],[1,1],[2,1]],
-            'I':  [[0,0],[1,0],[2,0],[3,0]],
-            '1x1': [[0,0]],
-            '1x2': [[0,0],[1,0]],
-            '📦': [[0,0]] // 📦 심리전 강철 상자 추가!
-        };
+            // 🚨 [CCTV] 기동 후 저격수 좌표 확인용 로그
+            const sniper = player.units.find(u => u.type === 'I');
+            console.log(`[기동 확정] ${player.name}의 저격수(I) 갱신된 좌표:`, sniper ? sniper.cells : "없음");
 
-        // 인벤토리에 강철 상자 1개 추가
-        let inventory = { 'ㄷ':1, 'L':1, 'T':1, 'ㅗ':1, 'I':1, '1x1':1, '1x2':1, '📦':1 };
+        } else {
+            // PLACING 단계는 처음 배치라 피격 기록이 없으므로 기존대로 전체 교체해도 됨
+            player.units = units;
 
-        function joinGame() {
-            myName = document.getElementById('name-input').value;
-            myRoom = document.getElementById('room-input').value;
-            if(!myName || !myRoom) return alert("입력 정보 부족!");
-            document.getElementById('my-name-display').innerText = myName;
-            document.getElementById('login-screen').style.display = 'none';
-            document.getElementById('main-game').style.display = 'flex';
-            socket.emit('joinRoom', { roomCode: myRoom, name: myName });
-            renderInventory();
-            initGrids();
+            // 🚨 [CCTV] 최초 배치 저격수 좌표 확인용 로그
+            const sniper = units.find(u => u.type === 'I');
+            console.log(`[배치 확정] ${player.name}의 저격수(I) 좌표:`, sniper ? sniper.cells : "없음");
         }
 
-        function initGrids() {
-            const oppGrid = document.getElementById('opponent-grid');
-            const myGrid = document.getElementById('my-grid');
-            oppGrid.innerHTML = ''; myGrid.innerHTML = '';
-            // 🚨 총 칸 수를 200에서 140으로 수정
-            for(let i=0; i<140; i++) {
-                const oCell = document.createElement('div');
-                
-                // 💡 [수정됨] 마우스 좌표를 읽기 위해 function(e)로 바꿨습니다.
-                oCell.onclick = function(e) { 
-                    if(gameStatus === 'PLAYING' && isMyTurn) {
-                        if (actionMode === 'MOVE') return alert("🏃 기동 모드입니다. 내 격자판의 1x1 함선을 클릭하세요.");
-                        
-                        // 서버로 보낼 현재 공격 타입을 미리 저장 (버그 방지용)
-                        const typeToEmit = actionMode; 
+        player.placed = true;
 
-                        // 🎯 [저격 모드 전용 로직]
-                        if (actionMode === 'SNIPE') {
-                            
-                            // 🚨 1. 안전장치: 클릭한 곳에 'sniper-line' 클래스가 없으면 차단!
-                            if (!oCell.classList.contains('sniper-line')) {
-                                addGameLog("[차단] 저격은 가이드라인(하늘색)이 쳐진 X좌표만 공격할 수 있습니다!");
-                                return; // 여기서 함수를 끝내버려서 총알이 안 나가게 함
-                            }
+        if (room.players.length === 2 && room.players.every(p => p.placed)) {
+            const prevState = room.gameState;
+            room.gameState = 'PLAYING';
+            room.players.forEach(p => p.placed = false);
 
-                            // 2. 이펙트 좌표 따오기
-                            const hitX = e.clientX;
-                            const hitY = e.clientY;
-                            
-                            // 3. 번쩍이는 원형 이펙트
-                            const hit = document.createElement('div');
-                            hit.className = 'hit';
-                            hit.style.left = hitX + 'px';
-                            hit.style.top = hitY + 'px';
-                            document.body.appendChild(hit);
-                            setTimeout(() => hit.remove(), 300);
+            if (prevState === 'PLACING') {
+                room.players.forEach(p => { p.maxFuel = 8; p.fuel = 8; });
+                const turnIndex = Math.floor(Math.random() * 2);
+                room.turn = room.players[turnIndex].id;
+                passTurn(room, room.turn);
+                io.to(currentRoom).emit('gameStart', { turn: room.turn });
+                io.to(currentRoom).emit('systemMsg', "전투 시작! 선공을 확인하세요.");
 
-                            // 4. 파편 튀는 이펙트
-                            createParticles(hitX, hitY);
+                // 🚨 게임 시작 시 1프레이즈로 표시!
+                io.to(currentRoom).emit('updatePhrase', 1); 
+                io.to(currentRoom).emit('systemMsg', "전투 시작! 선공을 확인하세요.");
+            } else {
+                io.to(currentRoom).emit('gameStart', { turn: room.turn });
+                io.to(currentRoom).emit('systemMsg', "전술 기동 완료! 전투를 재개합니다.");
+            }
+            updateRoomInfo(currentRoom);
+        } else {
+            socket.emit('systemMsg', "상대방의 작전 완료를 기다리는 중입니다...");
+        }
+    });
 
-                            // 5. 사격 순간 가이드라인 제거 & 일반 타격 모드로 복귀
-                            renderSniperLines(false);
-                            setActionMode('ATTACK'); 
-                        }
+    // 6. 특수 능력 판정 및 공격 로직 (140칸 최적화 Pro 버전)
+    socket.on('attack', (data) => {
+        const room = rooms[currentRoom];
+        if (!room || room.gameState !== 'PLAYING' || room.turn !== socket.id) return;
 
-                        // 🚀 최종 서버 발사: 저장해둔 typeToEmit('SNIPE' 또는 'ATTACK')을 보냄
-                        socket.emit('attack', { index: i, type: typeToEmit }); 
+        const { index, type } = data;
+        const attackIndex = index;
+        // 🚨 140칸 시스템 거울 반전 공식 (0~139)
+        const targetIndex = 139 - attackIndex; 
+
+        const attacker = room.players.find(p => p.id === socket.id);
+        const opponent = room.players.find(p => p.id !== socket.id);
+
+        // 🚨 14칸 레이아웃 기준 좌표 계산 (0 ~ 13)
+        const attackX = attackIndex % 14; 
+        const targetX = targetIndex % 14;
+        const targetY = Math.floor(targetIndex / 14);
+
+        // ==========================================
+        // [1] 저격(SNIPE) 특수 검증
+        // ==========================================
+        if (type === 'SNIPE') {
+            if (attacker.fuel < 1) return socket.emit('systemMsg', "연료 부족: 저격 실패.");
+            
+            let sniperY = -1; 
+            const hasLineOfSight = attacker.units.some(u => {
+                if (u.type !== 'I') return false; 
+                const isAlive = u.cells.length > (u.hitCells ? u.hitCells.length : 0);
+                const hasSight = isAlive && u.cells.some(c => c % 14 === attackX);
+                if (hasSight) sniperY = Math.floor(u.cells[0] / 14); 
+                return hasSight;
+            });
+            
+            if (!hasLineOfSight) return socket.emit('systemMsg', "저격 실패: 해당 열에 아군 저격수(I)가 없습니다.");
+
+            // 아군 T블럭 오사 방지 (저격수보다 앞에 있는 아군 방패 검증)
+            const isBlockedByAlly = attacker.units.some(u => {
+                if (u.type !== 'T') return false; 
+                const isAlive = u.cells.length > (u.hitCells ? u.hitCells.length : 0);
+                const sameX = u.cells.some(c => c % 14 === attackX); 
+                const isTFrontOfSniper = u.cells.some(c => Math.floor(c / 14) < sniperY);
+                return isAlive && sameX && isTFrontOfSniper; 
+            });
+
+            if (isBlockedByAlly) return socket.emit('systemMsg', "저격 실패: 아군 방패(T)가 시야를 가립니다.");
+            
+            attacker.fuel -= 1; // 연료 차감
+            socket.emit('updateFuel', { current: attacker.fuel, max: attacker.maxFuel });
+        }
+
+        // ==========================================
+        // [2] 상대방 방어(T) 및 타격 판정
+        // ==========================================
+        let hitResult = false;
+        let hitType = null;
+        let shieldBlocked = false;
+
+        // 상대방 T블럭 방패 판정
+        opponent.units.forEach(u => {
+            if (u.type === 'T') {
+                const isAlive = u.cells.length > (u.hitCells ? u.hitCells.length : 0);
+                if (isAlive) {
+                    const tXs = u.cells.map(c => c % 14);
+                    const tYs = u.cells.map(c => Math.floor(c / 14));
+                    const minX = Math.min(...tXs);
+                    const maxX = Math.max(...tXs);
+                    const frontY = Math.min(...tYs); // 방패의 최전방 Y좌표
+
+                    // 사선에 걸리고, 방패보다 뒤쪽이며, 방패 본체 클릭이 아닐 때
+                    if (targetX >= minX && targetX <= maxX && targetY > frontY && !u.cells.includes(targetIndex)) {
+                        shieldBlocked = true;
                     }
-                    else if(gameStatus === 'PLAYING' && !isMyTurn) addGameLog("[차단] 지금은 내 턴이 아닙니다.");
-                };
-
-                oppGrid.appendChild(oCell);
-                
-                const mCell = document.createElement('div');
-                mCell.onmouseenter = function() { showGhost(i); };
-                mCell.onclick = function() { 
-                    // 내 턴이고 기동(MOVE) 모드일 때는 1x1 선택 및 이동 로직으로 빠짐
-                    if(gameStatus === 'PLAYING' && isMyTurn && actionMode === 'MOVE') {
-                        handleMove1x1Click(i);
-                    } else {
-                        placeOrPickUnit(i); 
-                    }
-                };
-                myGrid.appendChild(mCell);
-            }
-        }
-
-        // 🚨 신규 함수: 액션 버튼 클릭 시 모드 변경 (연료 체크 로직 추가!)
-        function setActionMode(mode) {
-            if (!isMyTurn && gameStatus === 'PLAYING') return;
-            // 현재 화면에 표시된 연료량을 숫자로 가져옵니다.
-            const currentFuel = parseInt(document.getElementById('current-fuel').innerText) || 0;
-
-            // 연료가 부족하면 경고 띄우고 무조건 'ATTACK'으로 강제 변경
-            if (mode === 'SNIPE' && currentFuel < 1) {
-                addGameLog("[시스템] ⛽ 연료가 부족하여 저격을 사용할 수 없습니다.");
-                mode = 'ATTACK';
-            } else if (mode === 'MOVE' && currentFuel < 2) {
-                addGameLog("[시스템] ⛽ 연료가 부족하여 기동할 수 없습니다.");
-                mode = 'ATTACK';
-            }
-
-            actionMode = mode;
-            document.querySelectorAll('.action-btn').forEach(btn => btn.classList.remove('active'));
-            document.getElementById('btn-' + mode).classList.add('active');
-            selected1x1Idx = -1; // 모드가 바뀌면 선택해제
-            renderMyGrid();
-            // 🚨 모드가 바뀔 때 저격(SNIPE)이면 라인 켜고, 아니면 끄기
-            renderSniperLines(mode === 'SNIPE');
-            
-            const scopeLayer = document.getElementById('scope-layer');
-            const reticleLayer = document.getElementById('reticle');
-            if (scopeLayer && reticleLayer) {
-                scopeLayer.style.display = (mode === 'SNIPE') ? 'block' : 'none';
-                reticleLayer.style.display = (mode === 'SNIPE') ? 'block' : 'none';
-            }
-        }
-
-        // 🚨 신규 함수: 기동함선(1x1) 클릭 및 이동 로직 (클라이언트 1차 필터링)
-        function handleMove1x1Click(idx) {
-            // 1. 유닛 선택하기
-            if (selected1x1Idx === -1) {
-                const unit = myUnits.find(u => u.type === '1x1' && u.cells.includes(idx) && !u.isHit);
-                if (unit) {
-                    selected1x1Idx = idx;
-                    addGameLog("[기동] 1x1 함선을 선택했습니다. 이동할 인접한 빈칸을 클릭하세요.");
-                    renderMyGrid();
-                } else {
-                    alert("선택한 칸에 온전한 1x1 기동함선이 없습니다.");
                 }
-                return;
-            }
-
-            // 2. 선택 후 빈칸 클릭 시 서버로 이동 요청 쏘기
-            if (selected1x1Idx !== -1) {
-                if (myUnits.some(u => u.cells.includes(idx))) {
-                    alert("다른 유닛이 있는 곳로는 이동할 수 없습니다!");
-                    selected1x1Idx = -1; renderMyGrid();
-                    return;
-                }
-                // 서버에 이동 요청 쏘기 (비용 및 거리 계산은 서버에서 철저히 검증)
-                socket.emit('move1x1', { from: selected1x1Idx, to: idx });
-                selected1x1Idx = -1; // 요청 후 선택 해제
-                renderMyGrid();
-            }
-        }
-
-        // 🎯 스마트 조준경 (마그네틱 에임 어시스트 - 다중 사선 지원)
-        window.addEventListener('mousemove', (e) => {
-            if (actionMode !== 'SNIPE') return;
-
-            const scopeLayer = document.getElementById('scope-layer');
-            const reticleLayer = document.getElementById('reticle');
-
-            if(scopeLayer && reticleLayer) {
-                let targetX = e.clientX; 
-                let targetY = e.clientY; 
-
-                // 🧲 [핵심 수정] 모든 가이드라인을 다 가져옴
-                const validCells = document.querySelectorAll('.sniper-line');
-                
-                if (validCells.length > 0) {
-                    let closestX = targetX;
-                    let minDistance = Infinity;
-
-                    // 4칸(또는 여러 칸) 중 현재 마우스 X좌표와 가장 가까운 칸의 중앙값을 찾음
-                    validCells.forEach(cell => {
-                        const rect = cell.getBoundingClientRect();
-                        const cellCenterX = rect.left + (rect.width / 2);
-                        const distance = Math.abs(targetX - cellCenterX);
-
-                        if (distance < minDistance) {
-                            minDistance = distance;
-                            closestX = cellCenterX; // 가장 가까운 X좌표로 갱신
-                        }
-                    });
-
-                    // 조준경 X좌표를 가장 가까운 사선의 중앙으로 강제 고정!
-                    targetX = closestX;
-
-                    // Y좌표는 상대방 격자판 밖으로 나가지 않게 위아래 한계선 걸기
-                    const gridRect = document.getElementById('opponent-grid').getBoundingClientRect();
-                    if (targetY < gridRect.top) targetY = gridRect.top;
-                    if (targetY > gridRect.bottom) targetY = gridRect.bottom;
-                }
-
-                // 조준경 위치 적용
-                scopeLayer.style.left = targetX + 'px';
-                scopeLayer.style.top = targetY + 'px';
-                reticleLayer.style.left = targetX + 'px';
-                reticleLayer.style.top = targetY + 'px';
             }
         });
 
-        // 💥 파편 생성 함수
-        function createParticles(x, y) {
-            const count = 15;
-            for (let i = 0; i < count; i++) {
-                const p = document.createElement('div');
-                p.className = 'particle';
-                const angle = Math.random() * Math.PI * 2;
-                const dist = Math.random() * 100 + 50;
-                p.style.setProperty('--tx', `${Math.cos(angle) * dist}px`);
-                p.style.setProperty('--ty', `${Math.sin(angle) * dist}px`);
-                p.style.left = x + 'px';
-                p.style.top = y + 'px';
-                p.style.width = p.style.height = (Math.random() * 4 + 2) + 'px';
-                
-                document.body.appendChild(p); // 격자에 짤리지 않게 body에 추가
-                setTimeout(() => p.remove(), 600);
-            }
-        }
+        // 타격 처리 로직 (막히지 않았을 때만 발동)
+        if (!shieldBlocked) {
+            opponent.units.forEach(unit => {
+                if (unit.cells.includes(targetIndex)) {
+                    if (!unit.hitCells) unit.hitCells = [];
+                    if (!unit.hitCells.includes(targetIndex)) {
+                        unit.hitCells.push(targetIndex);
+                        unit.isHit = true;
+                    }
+                    hitResult = true;
+                    hitType = unit.type;
 
-        function getPlacementCells(type, pivotIdx) {
-            const shape = UNIT_SHAPES[type];
-            if(!shape) return [];
-
-            // 🚨 가로 칸 수를 20에서 14로 수정
-            const pcol = pivotIdx % 14;       
-            const prow = Math.floor(pivotIdx / 14); 
-
-            const minC = Math.min(...shape.map(o => o[0]));
-            const minR = Math.min(...shape.map(o => o[1]));
-
-            return shape.map(([c, r]) => {
-                const fc = pcol + (c - minC);
-                const fr = prow + (r - minR);
-                // 🚨 가로 칸 수 범위를 20에서 14로 수정
-                if(fc < 0 || fc >= 14 || fr < 0 || fr >= 10) return -1;
-                return fr * 14 + fc;
+                    // 특수 블럭(ㄷ, 📦) 파괴 효과
+                    if (unit.type === 'ㄷ' && unit.hitCells.length === unit.cells.length) {
+                        opponent.maxFuel = Math.max(0, opponent.maxFuel - 2);
+                        attacker.maxFuel += 1;
+                        io.to(currentRoom).emit('systemMsg', "⚠️ 제조창(ㄷ) 완파! [공격자 최대연료 +1 / 피해자 -2]");
+                    }
+                    if (unit.type === '📦') {
+                        opponent.bonusFuel = (opponent.bonusFuel || 0) + 2;
+                        io.to(currentRoom).emit('systemMsg', "📦 강철 상자 피격! 다음 턴 보너스 연료 +2 적립.");
+                    }
+                }
             });
         }
 
-        function placeOrPickUnit(idx) {
-            if (!isPlayer) {
-                addGameLog("[차단] 관전자는 유닛을 배치할 수 없습니다."); return;
-            }
-            if (gameStatus !== 'PLACING' && gameStatus !== 'MOVING') {
-                addGameLog("[차단] 지금은 유닛을 움직일 수 있는 단계가 아닙니다."); return;
-            }
-
-            // [클릭 시나리오 1: 이미 배치된 유닛을 다시 집어드는 경우]
-            const unitIdx = myUnits.findIndex(u => u.cells.includes(idx));
-            if (unitIdx !== -1) {
-                const unit = myUnits[unitIdx];
-                if (unit.isHit) return alert("이미 피격된 유닛은 이동할 수 없습니다!");
-
-                // 🚨 2번 규칙: 하나만 옮겼는지 판별하는 자물쇠 검사
-                if (gameStatus === 'MOVING') {
-                    // 이미 다른 놈을 움직였는데(movingOriginalState 존재), 그놈이 아닌 다른 유닛을 클릭한 경우
-                    if (movingOriginalState !== null && !unit.isMoved) {
-                        addGameLog("[차단] 1개의 유닛만 기동할 수 있습니다. 원래 자리(흰색)로 되돌리면 취소됩니다.");
-                        return;
-                    }
-                    // 처음으로 유닛을 집어드는 경우: 원본 위치 스냅샷 저장!
-                    if (movingOriginalState === null) {
-                        movingOriginalState = { type: unit.type, cells: [...unit.cells] };
-                    }
-                }
-
-                myUnits.splice(unitIdx, 1);
-                selectedUnitType = unit.type;
-                inventory[unit.type]++;
-                renderInventory(); renderMyGrid();
-                
-                if (gameStatus === 'MOVING') addGameLog("[알림] 기동 유닛 선택 완료. 재배치할 곳을 클릭하세요.");
-                else addGameLog("[알림] 유닛 회수: " + unit.type);
-                return;
-            }
-
-            // [클릭 시나리오 2: 선택한 유닛을 바닥에 내려놓는 경우]
-            if(!selectedUnitType) {
-                addGameLog("[알림] 먼저 유닛 모양을 선택하세요!"); return;
-            }
-
-            const cells = getPlacementCells(selectedUnitType, idx);
-
-            if(cells.includes(-1)) return;
-            if(cells.some(c => myUnits.some(u => u.cells.includes(c)))) return;
-
-            // 🚨 4번 규칙 (UNDO 마법): 놓으려는 위치가 스냅샷(흰색 껍데기)과 완전히 일치하는지 파이썬처럼 리스트 비교
-            let isOriginalPos = false;
-            if (gameStatus === 'MOVING' && movingOriginalState) {
-                const sortedCells = [...cells].sort((a,b)=>a-b);
-                const sortedOriginal = [...movingOriginalState.cells].sort((a,b)=>a-b);
-                isOriginalPos = sortedCells.length === sortedOriginal.length && 
-                                sortedCells.every((v, i) => v === sortedOriginal[i]); 
-            }
-
-            myUnits.push({ 
-                type: selectedUnitType, 
-                cells: cells, 
-                isHit: false, 
-                isMoved: (gameStatus === 'MOVING' && !isOriginalPos) // 제자리가 아니면 이동된 유닛으로 낙인!
-            });
-            
-            inventory[selectedUnitType]--;
-
-            if (gameStatus === 'MOVING') {
-                selectedUnitType = null; // 기동 중엔 인벤토리 안 봐도 되도록 자동 선택해제
-                if (isOriginalPos) {
-                    movingOriginalState = null; // 롤백(Undo) 발동! 자물쇠 완전히 품
-                    myUnits[myUnits.length - 1].isMoved = false;
-                    addGameLog("[알림] 원위치 복귀 (실행 취소). 다시 다른 유닛을 선택할 수 있습니다!");
-                } else {
-                    addGameLog("[알림] 기동 위치 지정 완료. 다시 클릭해 수정하거나 기동 확정을 누르세요.");
-                }
+        // ==========================================
+        // [3] 결과 전송 및 턴/프레이즈 계산
+        // ==========================================
+        if (shieldBlocked) {
+            // 🛡️ 방패에 막혔을 때
+            socket.emit('systemMsg', "🛡️ 상대의 T블럭 방패에 막혔습니다!");
+            if (type === 'SNIPE') {
+                io.to(currentRoom).emit('attackResult', { attacker: socket.id, attackIndex, targetIndex, hit: false, blocked: true, nextTurn: socket.id });
             } else {
-                if(inventory[selectedUnitType] <= 0) {
-                    selectedUnitType = Object.keys(inventory).find(t => inventory[t] > 0) || null;
-                }
-                const remaining = Object.entries(inventory).filter(([,v]) => v > 0);
-                if(remaining.length === 0) {
-                    addGameLog("[성공] 모든 유닛 배치 완료! 확정 버튼을 누르세요.");
-                }
+                room.phraseCount++;
+                io.to(currentRoom).emit('attackResult', { attacker: socket.id, attackIndex, targetIndex, hit: false, blocked: true, nextTurn: opponent.id });
+                passTurn(room, opponent.id);
             }
-
-            renderInventory(); renderMyGrid();
-        }
-
-        function renderMyGrid() {
-            const cells = document.getElementById('my-grid').children;
-            // 🚨 총 칸 수를 200에서 140으로 수정
-            for(let i=0; i<140; i++) {
-                cells[i].className = '';
-                cells[i].style.opacity = "1";
-            }
+        } 
+        else if (hitResult) {
+            // 💥 타격 성공했을 때
+            const allDestroyed = opponent.units.every(u => u.type === '📦' || u.cells.length === (u.hitCells ? u.hitCells.length : 0));
             
-            // 확정 버튼을 눌러서 movingOriginalState가 null이 되면, 이 조건문을 알아서 건너뛰면서 흰색 껍데기가 싹 사라집니다!
-            if (gameStatus === 'MOVING' && movingOriginalState) {
-                movingOriginalState.cells.forEach(c => {
-                    // 🚨 총 칸 수를 200에서 140으로 수정
-                    if(c >= 0 && c < 140) cells[c].classList.add('ghost-original');
-                });
-            }
-
-            myUnits.forEach(u => {
-                u.cells.forEach(c => {
-                    // 🚨 총 칸 수를 200에서 140으로 수정
-                    if(c < 0 || c >= 140) return;
-                    cells[c].classList.add('my-unit');
-                    
-                    // 🚨 강철 상자(📦)일 경우 갈색 클래스 덮어씌우기
-                    if (u.type === '📦') {
-                        cells[c].classList.add('box-unit'); 
-                    }
-
-                    if(u.isHit) cells[c].style.opacity = "0.6";
-                    if(u.hitCells && u.hitCells.includes(c)) cells[c].classList.add('hit-unit');
-                    
-                    if (c === selected1x1Idx) cells[c].classList.add('moving-1x1');
-                });
-            });
-        }
-
-        // 🚨 저격 가이드라인을 그리고 지우는 전용 함수
-        function renderSniperLines(show) {
-            const oppCells = document.getElementById('opponent-grid').children;
-            
-            // 1. 일단 기존 스나이퍼 라인을 싹 지웁니다.
-            for(let i=0; i<140; i++) {
-                oppCells[i].classList.remove('sniper-line');
-            }
-
-            // 2. 끄라고 했거나, 내 턴이 아니면 여기서 종료
-            if (!show || gameStatus !== 'PLAYING' || !isMyTurn) return;
-
-            // 3. 내 'I' 블럭 중 살아있는 녀석들의 X좌표(열) 수집
-            let validCols = [];
-            myUnits.forEach(u => {
-                if (u.type === 'I') {
-                    const isAlive = u.cells.length > (u.hitCells ? u.hitCells.length : 0);
-                    if (isAlive) {
-                        u.cells.forEach(c => {
-                            let col = c % 14;
-                            if (!validCols.includes(col)) validCols.push(col);
-                        });
-                    }
-                }
-            });
-
-            // 4. 수집된 X좌표에 해당하는 상대방 격자판에 색칠 (단, 이미 때린 곳은 제외!)
-            for(let i=0; i<140; i++) {
-                let col = i % 14;
-                if (validCols.includes(col)) {
-                    // 🚨 핵심: 빨간색(hit)이나 회색(miss)이 없을 때만 하늘색을 칠함
-                    if (!oppCells[i].classList.contains('hit-unit') && !oppCells[i].classList.contains('miss-cell')) {
-                        oppCells[i].classList.add('sniper-line');
-                    }
-                }
-            }
-        }
-
-        function showGhost(idx) {
-            clearGhost();
-            
-            if (!isPlayer || (gameStatus !== 'PLACING' && gameStatus !== 'MOVING') || !selectedUnitType) return;
-            
-            const cells = getPlacementCells(selectedUnitType, idx);
-            const myG = document.getElementById('my-grid');
-            const invalid = cells.includes(-1) || cells.some(c => myUnits.some(u => u.cells.includes(c)));
-            
-            // 🚨 3번 규칙: MOVING 단계면 마스터키(보라색)로 시각적 피드백 제공
-            const ghostClass = (gameStatus === 'MOVING') ? 'ghost-purple' : 'ghost';
-
-            cells.forEach(c => { 
-                // 🚨 총 칸 수를 200에서 140으로 수정
-                if(c >= 0 && c < 140) {
-                    myG.children[c].classList.add(ghostClass);
-                    if(invalid) myG.children[c].classList.add('ghost-invalid');
-                }
-            });
-        }
-
-        function clearGhost() { 
-            // 흰색 껍데기는 지우면 안 되므로 제외하고 싹 지움
-            document.querySelectorAll('.ghost, .ghost-purple, .ghost-invalid').forEach(g => {
-                g.classList.remove('ghost', 'ghost-purple', 'ghost-invalid');
-            }); 
-        }
-
-        function renderInventory() {
-            const inv = document.getElementById('unit-inventory');
-            inv.innerHTML = '';
-            for(let type in inventory) {
-                if(inventory[type] > 0) {
-                    const btn = document.createElement('button');
-                    btn.className = 'unit-btn' + (selectedUnitType === type ? ' active' : '');
-                    btn.innerText = `${type}(${inventory[type]})`;
-                    btn.onclick = function() { selectedUnitType = type; renderInventory(); };
-                    inv.appendChild(btn);
-                }
-            }
-        }
-
-        function resetPlacement() {
-            // MOVING 단계일 때도 쓰레기통(초기화) 버튼을 누르면 원위치(Undo) 시켜주는 디테일 추가
-            if(gameStatus === 'MOVING') {
-                if (movingOriginalState) {
-                    let movedUnitIdx = myUnits.findIndex(u => u.isMoved);
-                    if (movedUnitIdx !== -1) myUnits.splice(movedUnitIdx, 1);
-                    else if (selectedUnitType) { inventory[selectedUnitType]--; selectedUnitType = null; }
-                    
-                    myUnits.push({ type: movingOriginalState.type, cells: [...movingOriginalState.cells], isHit: false, isMoved: false });
-                    movingOriginalState = null;
-                    renderInventory(); renderMyGrid();
-                    addGameLog("[알림] 기동이 빗자루 버튼으로 취소되었습니다. 다시 선택하세요.");
-                }
-                return;
-            }
-
-            if(gameStatus !== 'PLACING') return; 
-            
-            myUnits.forEach(u => { if(!u.isHit) inventory[u.type]++; });
-            myUnits = myUnits.filter(u => u.isHit);
-            selectedUnitType = Object.keys(inventory).find(t => inventory[t] > 0) || null;
-            renderInventory(); renderMyGrid();
-            addGameLog("[알림] 배치 초기화 완료");
-        }
-
-        function handleButtonClick() {
-            const btn = document.getElementById('start-btn');
-            const txt = btn.innerText.trim();
-
-            if (txt === "게임 시작하기!") {
-                socket.emit('startGame');
-            } else if (txt === "준비하기" || txt === "준비 취소") {
-                socket.emit('toggleReady');
-            } else if (txt === "배치 확정" || txt === "본대 기동 확정") {
-                if (gameStatus === 'PLACING' && Object.values(inventory).some(v => v > 0)) {
-                    return alert("모든 유닛을 배치해야 합니다!\n남은 유닛: " +
-                        Object.entries(inventory).filter(([,v])=>v>0).map(([k,v])=>`${k}(${v}개)`).join(', '));
-                }
-                // 들고만 있고 내려놓지 않은 상태 방지
-                if (gameStatus === 'MOVING' && selectedUnitType) {
-                    return alert("기동 중인 유닛을 바닥에 내려놓아야 확정할 수 있습니다!");
-                }
-                
-                btn.disabled = true; btn.innerText = "상대 대기 중...";
-                socket.emit('finishPlacing', myUnits);
-
-                // 🚨 [핵심 수정 포인트] 확정 버튼을 누르는 순간, 흰색 껍데기 기억을 지우고 화면 갱신!
-                if (gameStatus === 'MOVING') {
-                    movingOriginalState = null;
-                    renderMyGrid(); 
-                }
-                
-            } else if (txt === "게임 종료") {
-                socket.emit('requestRematch'); // 서버에 초기화 요청
-            }
-        }
-
-        socket.on('roomData', data => {
-            const me = data.players.find(p => p.id === socket.id);
-            const opp = data.players.find(p => p.id !== socket.id);
-            const btn = document.getElementById('start-btn');
-
-            isPlayer = !!me; 
-            gameStatus = data.gameState;
-
-            // 🏷️ 이름표 DOM 가져오기
-            const myRole = document.getElementById('my-role');
-            const myNameDisplay = document.getElementById('my-name-display');
-            const myV = document.getElementById('my-v');
-            const oppRole = document.getElementById('opp-role');
-            const oppNameDisplay = document.getElementById('opp-name');
-            const oppV = document.getElementById('opp-v');
-
-            // 🌫️ 관전자는 전장의 안개를 걷어냄 (투시)
-            const fog = document.querySelector('.fogwrapper');
-            if (fog) fog.style.display = isPlayer ? 'block' : 'none';
-
-            // ⚔️ [1] 내가 플레이어일 때 (기존 로직)
-            if (isPlayer) {
-                myRole.innerText = "● COMMANDER:";
-                myNameDisplay.innerText = me.name;
-                myV.style.display = me.isReady ? 'inline' : 'none';
-
-                oppRole.innerText = "● HOSTILE:";
-                oppNameDisplay.innerText = opp ? opp.name : "대기 중";
-                oppV.style.display = (opp && opp.isReady) ? 'inline' : 'none';
-                
-                document.getElementById('action-panel').style.display = (gameStatus === 'PLAYING') ? 'flex' : 'none';
+            if (allDestroyed) {
+                io.to(currentRoom).emit('attackResult', { attacker: socket.id, attackIndex, targetIndex, hit: true });
+                room.gameState = 'ENDED';
+                io.to(currentRoom).emit('gameOver', { winner: userName });
+                return; // 게임 끝났으니 아래 로직 무시
             } 
-            // 👁️ [2] 내가 관전자일 때 (e스포츠 중계 모드)
-            else {
-                const p1 = data.players[0]; // 먼저 들어온 사람 (바닥)
-                const p2 = data.players[1]; // 늦게 들어온 사람 (상단)
-
-                myRole.innerText = "● PLAYER 1:";
-                myNameDisplay.innerText = p1 ? p1.name : "대기 중";
-                myV.style.display = (p1 && p1.isReady) ? 'inline' : 'none';
-
-                oppRole.innerText = "● PLAYER 2:";
-                oppNameDisplay.innerText = p2 ? p2.name : "대기 중";
-                oppV.style.display = (p2 && p2.isReady) ? 'inline' : 'none';
-                
-                // 관전자는 액션 패널과 인벤토리를 숨김
-                document.getElementById('action-panel').style.display = 'none';
-                document.getElementById('unit-inventory').style.display = 'none';
-                
-                // 🚨 게임 중이거나 종료 상태면 양쪽 유닛을 다 그려줌!
-                if (gameStatus === 'PLAYING' || gameStatus === 'ENDED') {
-                    renderSpectatorView(p1, p2);
-                }
-            }
-
-            // 로비 버튼 제어
-            if (data.gameState === 'LOBBY') {
-                btn.disabled = false;
-                if (data.players.length === 2 && data.players.every(p => p.isReady)) {
-                    btn.innerText = "SYSTEM START!"; btn.style.background = "#FF9800";
-                } else {
-                    if (isPlayer) {
-                        btn.innerText = me.isReady ? "CANCEL READY" : "SYSTEM READY"; 
-                        btn.style.background = me.isReady ? "#e74c3c" : "#2ecc71";
-                    } else {
-                        btn.innerText = "SPECTATING..."; btn.style.background = "#34495e"; btn.disabled = true;
-                    }
-                }
-            }
-
-            document.getElementById('player-list').innerText = "플레이어: " + data.players.map(p => p.name).join(', ');
-            document.getElementById('spectator-list').innerText = "관전자: " + data.spectators.map(s => s.name).join(', ');
-        });
-
-
-        // 👁️ [관전자 전용] 양쪽 플레이어의 유닛을 모두 그려주는 시스템
-        function renderSpectatorView(p1, p2) {
-            const myCells = document.getElementById('my-grid').children;
-            const oppCells = document.getElementById('opponent-grid').children;
-
-            // 1. 관전자 화면 싹 초기화 (흰색 껍데기 등 제거)
-            for(let i=0; i<140; i++) {
-                myCells[i].className = ''; myCells[i].style.opacity = "1";
-                oppCells[i].className = ''; oppCells[i].style.opacity = "1";
-            }
-
-            // 2. 바닥 플레이어(P1) 유닛 그리기
-            if (p1 && p1.units) {
-                p1.units.forEach(u => {
-                    u.cells.forEach(c => {
-                        if (c >= 0 && c < 140) {
-                            myCells[c].classList.add('my-unit');
-                            if (u.type === '📦') myCells[c].classList.add('box-unit');
-                            if (u.hitCells && u.hitCells.includes(c)) myCells[c].classList.add('hit-unit');
-                        }
-                    });
-                });
-            }
-
-            // 3. 상단 플레이어(P2) 유닛 그리기 (🚨 관전자 시점이므로 139 거울 반전 필수!)
-            if (p2 && p2.units) {
-                p2.units.forEach(u => {
-                    u.cells.forEach(c => {
-                        if (c >= 0 && c < 140) {
-                            let mirrorIdx = 139 - c; // 거울 반전
-                            oppCells[mirrorIdx].classList.add('my-unit');
-                            if (u.type === '📦') oppCells[mirrorIdx].classList.add('box-unit');
-                            if (u.hitCells && u.hitCells.includes(c)) oppCells[mirrorIdx].classList.add('hit-unit');
-                        }
-                    });
-                });
-            }
-        }
-
-        function changeRole(r) { socket.emit('changeRole', r); }
-
-        socket.on('startPlacing', () => {
-            gameStatus = "PLACING";
-            movingOriginalState = null;
-            if (myUnits.length === 0) {
-                inventory = { 'ㄷ':1, 'L':1, 'T':1, 'ㅗ':1, 'I':1, '1x1':1, '1x2':1, '📦':1 }; // 상자 포함 리셋
-                selectedUnitType = Object.keys(inventory)[0];
-            }
-            document.getElementById('fuel-display').style.display = 'none';
-            document.getElementById('action-panel').style.display = 'none';
-            renderInventory(); renderMyGrid();
-            const btn = document.getElementById('start-btn');
-            btn.innerText = "배치 확정"; btn.style.background = "#2ecc71"; btn.disabled = false;
-            document.getElementById('reset-btn').style.display = 'block';
-        });
-
-        socket.on('startMoving', () => {
-            gameStatus = "MOVING"; // 이것은 5프레이즈 본대 재배치용 상태
-            movingOriginalState = null; 
-            selectedUnitType = null;
-            myUnits.forEach(u => u.isMoved = false); 
             
-            const btn = document.getElementById('start-btn');
-            btn.innerText = "본대 기동 확정"; btn.style.background = "#9b59b6"; btn.disabled = false;
-            addGameLog("[시스템] 본대 전술 기동 단계입니다. 1개의 유닛만 재배치할 수 있습니다. (1x1 제외)");
-        });
-
-        socket.on('gameStart', data => {
-            gameStatus = "PLAYING";
-            document.getElementById('fuel-display').style.display = 'block';
-            document.getElementById('action-panel').style.display = 'flex';
-            setActionMode('ATTACK'); // 기본은 타격 모드
-            updateTurn(data.turn);
-            addGameLog("[시스템] 전투 시작! 연료를 관리하며 액션을 선택하세요.");
-            document.getElementById('reset-btn').style.display = 'block';
-            document.getElementById('reset-btn').style.display = 'none';
-        });
-
-        // 🚨 신규 수신: 서버로부터 연료 현황 업데이트 받기 (자동 복귀 로직 추가!)
-        socket.on('updateFuel', data => {
-            document.getElementById('current-fuel').innerText = data.current;
-            document.getElementById('max-fuel').innerText = data.max;
-
-            // 방금 쏜 저격이나 기동 때문에 연료가 바닥났다면, 즉시 타격 모드로 자동 복귀!
-            if (actionMode === 'SNIPE' && data.current < 1) {
-                setActionMode('ATTACK');
-            } else if (actionMode === 'MOVE' && data.current < 2) {
-                setActionMode('ATTACK');
-            }
-        });
-
-        socket.on('attackResult', data => {
-            if (!isPlayer) return; // 관전자는 공격 결과에 따른 격자판 업데이트나 턴 변경이 필요 없으므로 바로 리턴
-            if (data.attacker === socket.id) {
-                // 1. 내가 공격했을 때: 막힌 게 아닐 때만 색칠함!
-                if (!data.blocked) {
-                    document.getElementById('opponent-grid').children[data.attackIndex].classList.add(data.hit ? 'hit-unit' : 'miss-cell');
-                }
-                addGameLog(`내 공격: ${data.hit ? "💥 적중!" : (data.blocked ? "🛡️ T블럭에 막아냄!" : "🌊 불발")}`);
+            if (hitType === 'T' && type !== 'SNIPE') {
+                passTurn(room, opponent.id);
+                io.to(currentRoom).emit('attackResult', { attacker: socket.id, attackIndex, targetIndex, hit: true, nextTurn: opponent.id });
+                io.to(currentRoom).emit('systemMsg', "🛡️ T블럭 타격! 공격 기회가 소멸되었습니다.");
             } else {
-                // 2. 내가 방어할 때: 막힌 게 아닐 때만 피격 판정
-                if (!data.blocked) {
-                    document.getElementById('my-grid').children[data.targetIndex].classList.add(data.hit ? 'hit-unit' : 'miss-cell');
+                if (hitType === 'T' && type === 'SNIPE') {
+                    io.to(currentRoom).emit('systemMsg', "🛡️ T블럭 타격! (저격 능력이므로 턴이 유지됩니다.)");
                 }
-                
-                if (data.hit) {
-                    myUnits.forEach(u => {
-                        if (u.cells.includes(data.targetIndex)) {
-                            if (!u.hitCells) u.hitCells = [];
-                            if (!u.hitCells.includes(data.targetIndex)) {
-                                u.hitCells.push(data.targetIndex);
-                            }
-                            u.isHit = true; 
-                        }
-                    });
-                    renderMyGrid(); 
-                }
-                addGameLog(`상대 공격: ${data.hit ? "💥 적중!" : (data.blocked ? "🛡️ T블럭에 막아냄!" : "🌊 불발")}`);
+                io.to(currentRoom).emit('attackResult', { attacker: socket.id, attackIndex, targetIndex, hit: true, nextTurn: socket.id });
             }
-            
-            if(data.nextTurn) updateTurn(data.nextTurn);
-        });
-
-        function updateTurn(turnId) {
-            isMyTurn = (socket.id === turnId);
-            const btn = document.getElementById('start-btn');
-            
-            // 1. 메인 버튼(준비/턴 표시) 상태 변경
-            btn.innerText = isMyTurn ? "🔥 나의 턴" : "⏳ 상대 턴";
-            btn.style.background = isMyTurn ? "#e74c3c" : "#34495e";
-            document.getElementById('opponent-grid').className = isMyTurn ? "grid my-turn-border" : "grid";
-
-            // 2. 🎯 액션 버튼(타격, 저격, 기동) 활성화/비활성화 제어
-            const actionBtns = document.querySelectorAll('.action-btn');
-            actionBtns.forEach(button => {
-                // 내 턴이면 disabled 해제(false), 아니면 설정(true)
-                button.disabled = !isMyTurn;
-            });
-
-            // 3. 🛡️ 내 턴이 끝나면 조준경 및 가이드라인 즉시 강제 종료
-            if (!isMyTurn) {
-                renderSniperLines(false); // 가이드라인(하늘색) 끄기
-                
-                const scopeLayer = document.getElementById('scope-layer');
-                const reticleLayer = document.getElementById('reticle');
-                if (scopeLayer && reticleLayer) {
-                    scopeLayer.style.display = 'none';
-                    reticleLayer.style.display = 'none';
-                }
-                
-                // 액션 모드도 기본 'ATTACK'으로 리셋 (다음 턴에 조준경이 갑자기 뜨는 것 방지)
-                actionMode = 'ATTACK';
-                document.querySelectorAll('.action-btn').forEach(b => b.classList.remove('active'));
-                document.getElementById('btn-ATTACK').classList.add('active');
+        } 
+        else {
+            // 🌊 허공에 빗나갔을 때
+            if (type === 'SNIPE') {
+                io.to(currentRoom).emit('attackResult', { attacker: socket.id, attackIndex, targetIndex, hit: false, nextTurn: socket.id });
+                socket.emit('systemMsg', "🔫 저격 빗나감! (턴 유지)");
+            } else {
+                room.phraseCount++;
+                io.to(currentRoom).emit('attackResult', { attacker: socket.id, attackIndex, targetIndex, hit: false, nextTurn: opponent.id });
+                passTurn(room, opponent.id);
             }
         }
 
-        socket.on('gameOver', data => {
-            gameStatus = "ENDED";
-            const btn = document.getElementById('start-btn');
-            btn.disabled = false; btn.innerText = "게임 종료"; btn.style.background = "#8e44ad";
-            addGameLog("[시스템] 게임 종료! 승자: " + data.winner);
-            alert("게임 종료! 승자: " + data.winner);
-        });
+        // ==========================================
+        // [4] 공통: 프레이즈 갱신 및 재배치(MOVING) 체크
+        // ==========================================
+        // 저격이 아닌 일반 공격이 빗나가거나 막혔을 때만 프레이즈가 증가하므로, 그 조건을 확인
+        if (type !== 'SNIPE' && (!hitResult || shieldBlocked)) {
+            const currentPhrase = Math.floor(room.phraseCount / 2) + 1;
+            io.to(currentRoom).emit('updatePhrase', currentPhrase);
 
-        socket.on('rematchStarted', () => { 
-            // 🚨 무식한 location.reload() 삭제 완료! 
-            // 대신 화면의 데이터만 빗자루로 싹 쓸어냅니다.
-            myUnits = [];
-            isMyTurn = false;
-            gameStatus = "LOBBY";
-            selectedUnitType = null;
-            movingOriginalState = null;
-            inventory = { 'ㄷ':1, 'L':1, 'T':1, 'ㅗ':1, 'I':1, '1x1':1, '1x2':1, '📦':1 };
-            
-            initGrids(); // 양쪽 격자판 HTML 싹 지우고 새로 그리기
-            renderInventory(); // 인벤토리 리셋
-            
-            const btn = document.getElementById('start-btn');
-            btn.innerText = "준비하기"; 
-            btn.style.background = "#4CAF50";
-            btn.disabled = false;
-            
-            addGameLog("[시스템] 게임이 종료되었습니다. 모든 인원이 관전자로 이동합니다.");
-            document.getElementById('reset-btn').style.display = 'none';
-        });
-
-        socket.on('systemMsg', msg => addGameLog("[시스템] " + msg));
-        
-        function sendChat() {
-            const i = document.getElementById('chat-input');
-            if(i.value) socket.emit('sendChat', i.value);
-            i.value = "";
+            // 10번 빗나감 = 5왕복 = 5프레이즈 달성
+            if (room.phraseCount > 0 && room.phraseCount % 10 === 0) {
+                room.gameState = 'MOVING';
+                io.to(currentRoom).emit('startMoving');
+                io.to(currentRoom).emit('systemMsg', "⚠️ 5프레이즈(10턴) 도달! 본대 유닛을 재배치하세요.");
+            }
         }
-        socket.on('receiveChat', d => {
-            const l = document.getElementById('chat-log');
-            l.innerHTML += `<div>${d.name}: ${d.msg}</div>`;
-            l.scrollTop = l.scrollHeight;
-        });
+        updateRoomInfo(currentRoom);
+    }); // socket.on('attack') 끝
 
-        socket.on('syncMovedUnit', data => {
-            if (!isPlayer) return; // 관전자는 굳이 이동된 유닛의 위치를 동기화할 필요가 없으므로 바로 리턴
-            let unit = myUnits.find(u => u.type === '1x1' && u.cells.includes(data.oldIdx));
-            if (unit) unit.cells = [data.newIdx];
-            renderMyGrid();
-        });
+    // 9. 기동함선(1x1) 이동 엔진 (🚨 대면 모드 레이더 업그레이드)
+    socket.on('move1x1', (data) => {
+        const room = rooms[currentRoom];
+        if (!room || room.gameState !== 'PLAYING' || room.turn !== socket.id) return;
         
-        socket.on('updatePhrase', phrase => {
-            document.getElementById('phrase-display').innerText = `[ ${phrase} 프레이즈 ]`;
-        });
+        const { from, to } = data;
+        const player = room.players.find(p => p.id === socket.id);
+        const opponent = room.players.find(p => p.id !== socket.id);
+        
+        if (player.fuel < 2) return socket.emit('systemMsg', "기동 실패: 연료가 2 필요합니다.");
 
-        function addGameLog(m) {
-            const l = document.getElementById('game-log');
-            l.innerHTML += `<div>${m}</div>`;
-            l.scrollTop = l.scrollHeight;
-        }
-        
-        // --- [데이터 센터(설명창) 제어 함수] ---
-        function openManual() {
-            const layer = document.getElementById('manual-layer');
-            layer.style.display = 'block'; // 창 보이기
-            
-            // 매번 새로 열 때마다 로딩 애니메이션을 보고 싶다면 아래 한 줄 추가
-            document.getElementById('manual-frame').src = "manual.html";
+        // 🚨 가로 칸 수를 20에서 14로 수정
+        const fromX = from % 14, fromY = Math.floor(from / 14);
+        const toX = to % 14, toY = Math.floor(to / 14);
+        if (Math.abs(fromX - toX) > 1 || Math.abs(fromY - toY) > 1) {
+            return socket.emit('systemMsg', "기동 실패: 인접한 1칸(대각선 포함 8방향)으로만 이동 가능합니다.");
         }
 
-        // 💡 중요: manual.html 안에서 레이더를 눌렀을 때 부모창을 닫기 위해 필요함
-        window.closeManualFromFrame = function() {
-            document.getElementById('manual-layer').style.display = 'none'; // 창 숨기기
-        };
-    </script>
-</body>
-</html>
+        const unit = player.units.find(u => u.type === '1x1' && u.cells.includes(from) && !u.isHit);
+        if (!unit) return;
+
+        unit.cells = [to];
+        player.fuel -= 2;
+        socket.emit('updateFuel', { current: player.fuel, max: player.maxFuel });
+        socket.emit('syncMovedUnit', { oldIdx: from, newIdx: to }); 
+        socket.emit('systemMsg', "🏃 1x1 기동함선 이동 완료. (-2⛽)");
+
+        // 📡 레이더(L) 발각 판정 (내 toX는 상대방 입장에서는 13 - toX 열에 해당함!)
+        const isSpotted = opponent.units.some(u => {
+            if (u.type !== 'L') return false;
+            const isAlive = u.cells.length > (u.hitCells ? u.hitCells.length : 0);
+            return isAlive && u.cells.some(c => c % 14 === (13 - toX));
+        });
+
+        if (isSpotted) {
+            // 🚨 currentRoom(방 전체) ➡️ opponent.id(레이더 주인) 에게만 귓속말 전송!
+            io.to(opponent.id).emit('systemMsg', "📡 [레이더 경보] 적 기동함선의 움직임이 포착되었습니다!");
+        }
+        updateRoomInfo(currentRoom);
+    });
+
+    // 7. 게임 종료 및 로비 초기화 로직
+    socket.on('requestRematch', () => {
+        const room = rooms[currentRoom];
+        if (!room || room.gameState !== 'ENDED') return;
+
+        room.gameState = 'LOBBY';
+        room.phraseCount = 0;
+        room.turn = null;
+
+        room.players.forEach(p => {
+            room.spectators.push({ id: p.id, name: p.name });
+        });
+        
+        room.players = [];
+
+        io.to(currentRoom).emit('rematchStarted');
+        updateRoomInfo(currentRoom);
+        io.to(currentRoom).emit('systemMsg', "방이 초기화되었습니다. 다시 게임을 하려면 [플레이어로 가기]를 눌러주세요!");
+    });
+
+    socket.on('sendChat', (msg) => {
+        if (currentRoom) io.to(currentRoom).emit('receiveChat', { name: userName, msg });
+    });
+
+    // 8. 접속 종료 로직
+    socket.on('disconnect', () => {
+        if (currentRoom && rooms[currentRoom]) {
+            const room = rooms[currentRoom];
+            const wasPlayer = room.players.some(p => p.id === socket.id);
+            
+            room.players = room.players.filter(p => p.id !== socket.id);
+            room.spectators = room.spectators.filter(s => s.id !== socket.id);
+            
+            if (wasPlayer && (room.gameState === 'PLAYING' || room.gameState === 'PLACING' || room.gameState === 'MOVING')) {
+                room.gameState = 'LOBBY';
+                room.phraseCount = 0;
+                room.turn = null;
+                room.players.forEach(p => { 
+                    p.isReady = false; 
+                    p.placed = false; 
+                    p.units = []; 
+                });
+                
+                io.to(currentRoom).emit('systemMsg', "🚨 상대방의 연결이 끊겨 게임이 로비로 초기화되었습니다.");
+                io.to(currentRoom).emit('rematchStarted'); 
+            }
+            
+            updateRoomInfo(currentRoom);
+        }
+    });
+
+    // 🚨 턴 넘기기 유틸 함수 (연료 마이너스 통장 탈출 및 상자 보너스 적용!)
+    function passTurn(room, nextTurnId) {
+        room.turn = nextTurnId;
+        const nextPlayer = room.players.find(p => p.id === nextTurnId);
+        
+        if (nextPlayer) {
+            const aliveShips = nextPlayer.units.filter(u => u.type !== '📦' && u.cells.length > (u.hitCells ? u.hitCells.length : 0)).length;
+            
+            // 🚨 1. 기본 연료 계산 (최대 연료 - 생존 함선 수)
+            let baseFuel = nextPlayer.maxFuel - aliveShips; 
+            if (baseFuel < 0) baseFuel = 0; 
+            
+            // 🚨 2. 보너스 통장에서 연료 꺼내기 (강철 상자 혜택)
+            const bonus = nextPlayer.bonusFuel || 0;
+            nextPlayer.fuel = baseFuel + bonus; // 기본 연료에 보너스 합산!
+            nextPlayer.bonusFuel = 0; // 보너스 수령 후 통장 초기화 (먹튀 방지)
+
+            // 🚨 3. 클라이언트에 갱신된 연료 정보 쏘기
+            io.to(nextTurnId).emit('updateFuel', { current: nextPlayer.fuel, max: nextPlayer.maxFuel });
+            
+            // 🚨 4. 보너스 유무에 따라 시스템 메시지를 다르게 출력
+            if (bonus > 0) {
+                io.to(nextTurnId).emit('systemMsg', `🔥 내 턴 시작! (🎁상자 보너스 +${bonus} 합산됨! 현재 연료: ⛽ ${nextPlayer.fuel})`);
+            } else {
+                io.to(nextTurnId).emit('systemMsg', `🔥 내 턴 시작! (유지비 차감 후 연료: ⛽ ${nextPlayer.fuel})`);
+            }
+        }
+    }
+
+    function updateRoomInfo(roomCode) {
+        if (rooms[roomCode]) {
+            io.to(roomCode).emit('roomData', rooms[roomCode]);
+        }
+    }
+}); 
+
+const PORT = process.env.PORT || 3000;
+server.listen(PORT, () => console.log(`Tactical Engine Active on port ${PORT}`));
