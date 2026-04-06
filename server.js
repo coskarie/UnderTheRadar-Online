@@ -365,16 +365,16 @@ io.on('connection', (socket) => {
         
         const { from, to } = data;
         const player = room.players.find(p => p.id === socket.id);
-        const opponent = room.players.find(p => p.id !== socket.id);
+        const opponent = room.players.find(p => p.id !== socket.id); // 상대방 정보
         const isPlayer1 = (player.id === room.players[0].id);
 
         if (player.fuel < 2) return socket.emit('systemMsg', "기동 실패: 연료가 2 필요합니다.");
 
-        // 🚨 140칸 기준 인접 8방향 검증
+        // 🚨 140칸 기준 반경 2칸 검증
         const fromX = from % 14, fromY = Math.floor(from / 14);
         const toX = to % 14, toY = Math.floor(to / 14);
         if (Math.abs(fromX - toX) > 2 || Math.abs(fromY - toY) > 2) {
-            return socket.emit('systemMsg', "기동 실패: 인접한 2칸(대각선 포함 8방향)으로만 이동 가능합니다.");
+            return socket.emit('systemMsg', "기동 실패: 반경 2칸 이내로만 이동 가능합니다.");
         }
 
         const unit = player.units.find(u => u.type === '1x1' && u.cells.includes(from) && !u.isHit);
@@ -384,11 +384,47 @@ io.on('connection', (socket) => {
         unit.cells = [to];
         player.fuel -= 2;
 
-        // 🎁 보급 상자 획득 판정 (거울 반전 좌표 처리)
+        // 🚨 [신규] L블럭 레이더 포착 시스템 (뛰어넘는 궤적 스캔)
+        if (opponent) {
+            let radarCols = new Set();
+            opponent.units.forEach(u => {
+                const isAlive = u.cells.length > (u.hitCells ? u.hitCells.length : 0);
+                if (u.type === 'L' && isAlive) {
+                    u.cells.forEach(c => radarCols.add(c % 14));
+                }
+            });
+
+            if (radarCols.size > 0) {
+                // 내 이동 경로를 상대방 시점의 좌표로 변환
+                const oppFrom = 139 - from;
+                const oppTo = 139 - to;
+                
+                const oppFromX = oppFrom % 14;
+                const oppToX = oppTo % 14;
+                
+                const minX = Math.min(oppFromX, oppToX);
+                const maxX = Math.max(oppFromX, oppToX);
+
+                let isDetected = false;
+                for (let col of radarCols) {
+                    if (col >= minX && col <= maxX) {
+                        isDetected = true;
+                        break;
+                    }
+                }
+
+                if (isDetected) {
+                    io.to(opponent.id).emit('radarDetected', { index: oppTo });
+                    socket.emit('systemMsg', "⚠️ 경고: 적의 L블럭 레이더망을 통과하여 위치가 발각되었습니다!");
+                }
+            }
+        }
+
+        // 🎁 보급 상자 획득 판정
         const absoluteTo = isPlayer1 ? to : (139 - to);
         if (room.bonusBox !== null && absoluteTo === room.bonusBox) {
             player.fuel += 4; 
-            room.bonusBox = null; // 획득 후 상자 증발
+            room.bonusBox = null;
             io.to(currentRoom).emit('systemMsg', `🎊 ${player.name} 지휘관이 보급 상자를 확보했습니다! (연료 +4⛽)`);
         }
 
@@ -396,18 +432,8 @@ io.on('connection', (socket) => {
         socket.emit('syncMovedUnit', { oldIdx: from, newIdx: to }); 
         socket.emit('systemMsg', "🏃 1x1 기동함선 이동 완료. (-2⛽)");
 
-        // 레이더 포착 여부
-        const isSpotted = opponent.units.some(u => {
-            if (u.type !== 'L') return false;
-            const isAlive = u.cells.length > (u.hitCells ? u.hitCells.length : 0);
-            return isAlive && u.cells.some(c => c % 14 === (13 - toX));
-        });
-
-        if (isSpotted) {
-            io.to(opponent.id).emit('systemMsg', "📡 [레이더 경보] 적 기동함선의 움직임이 포착되었습니다!");
-        }
-        
         updateRoomInfo(currentRoom); // 관전자 화면 갱신
+        passTurn(room, socket.id); // 턴 넘기기 (이 코드가 빠져있었다면 꼭 추가!)
     });
 
     // 7. 게임 종료 및 로비 초기화 로직
