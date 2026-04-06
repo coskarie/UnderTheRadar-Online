@@ -1029,9 +1029,9 @@
 
         function renderMyGrid() {
             const cells = document.getElementById('my-grid').children;
-            // 🚨 총 칸 수를 200에서 140으로 수정
             for(let i=0; i<140; i++) {
-                cells[i].className = '';
+                const hasBonus = cells[i].classList.contains('bonus-box');
+                cells[i].className = hasBonus ? 'bonus-box' : '';
                 cells[i].style.opacity = "1";
             }
             
