@@ -433,7 +433,6 @@ io.on('connection', (socket) => {
         socket.emit('systemMsg', "🏃 1x1 기동함선 이동 완료. (-2⛽)");
 
         updateRoomInfo(currentRoom); // 관전자 화면 갱신
-        passTurn(room, socket.id); // 턴 넘기기 (이 코드가 빠져있었다면 꼭 추가!)
     });
 
     // 7. 게임 종료 및 로비 초기화 로직
