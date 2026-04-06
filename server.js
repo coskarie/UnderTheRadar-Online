@@ -373,8 +373,8 @@ io.on('connection', (socket) => {
         // 🚨 140칸 기준 인접 8방향 검증
         const fromX = from % 14, fromY = Math.floor(from / 14);
         const toX = to % 14, toY = Math.floor(to / 14);
-        if (Math.abs(fromX - toX) > 1 || Math.abs(fromY - toY) > 1) {
-            return socket.emit('systemMsg', "기동 실패: 인접한 1칸(대각선 포함 8방향)으로만 이동 가능합니다.");
+        if (Math.abs(fromX - toX) > 2 || Math.abs(fromY - toY) > 2) {
+            return socket.emit('systemMsg', "기동 실패: 인접한 2칸(대각선 포함 8방향)으로만 이동 가능합니다.");
         }
 
         const unit = player.units.find(u => u.type === '1x1' && u.cells.includes(from) && !u.isHit);
@@ -501,28 +501,33 @@ io.on('connection', (socket) => {
             }
         });
 
-        // 🚨 7턴마다 보급 상자 생성 로직
-        if (room.turnCount % 7 === 0) {
-            const occupiedCells = new Set();
-            room.players.forEach(p => {
-                p.units.forEach(u => {
-                    u.cells.forEach(c => {
-                        // 플레이어 2의 좌표는 1번 기준으로 변환해서 체크
-                        const cell = (p === room.players[0]) ? c : (139 - c);
-                        occupiedCells.add(cell);
+        // 🚨 [수정] 보급 상자 생성 로직: 상자가 없을 때만 카운터가 돌아갑니다!
+        if (room.bonusBox === null || room.bonusBox === undefined) {
+            room.boxTurnCount = (room.boxTurnCount || 0) + 1; // 상자 전용 타이머 째깍째깍
+            
+            if (room.boxTurnCount >= 7) {
+                const occupiedCells = new Set();
+                room.players.forEach(p => {
+                    p.units.forEach(u => {
+                        u.cells.forEach(c => {
+                            // 플레이어 2의 좌표는 1번 기준으로 변환해서 체크
+                            const cell = (p.id === room.players[0].id) ? c : (139 - c);
+                            occupiedCells.add(cell);
+                        });
                     });
                 });
-            });
 
-            // 빈 칸 찾기 (최대 100번 시도)
-            let randomIdx;
-            for(let i=0; i<100; i++) {
-                randomIdx = Math.floor(Math.random() * 140);
-                if (!occupiedCells.has(randomIdx)) {
-                    room.bonusBox = randomIdx; // 보급 상자 위치 확정
-                    // (불필요한 parentElement 코드 삭제됨)
-                    io.to(Object.keys(room.spectators).concat(room.players.map(p=>p.id))).emit('systemMsg', "🎁 전장에 보급 상자가 투하되었습니다! (7턴 보너스)");
-                    break;
+                // 빈 칸 찾기 (최대 100번 시도)
+                let randomIdx;
+                for(let i=0; i<100; i++) {
+                    randomIdx = Math.floor(Math.random() * 140);
+                    if (!occupiedCells.has(randomIdx)) {
+                        room.bonusBox = randomIdx; // 보급 상자 위치 확정
+                        room.boxTurnCount = 0;     // 🚨 상자가 생성되었으므로 타이머를 0으로 리셋 후 정지!
+                        
+                        io.to(Object.keys(room.spectators).concat(room.players.map(p=>p.id))).emit('systemMsg', "🎁 전장에 보급 상자가 투하되었습니다! (선점하세요!)");
+                        break;
+                    }
                 }
             }
         }
