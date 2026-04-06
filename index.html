@@ -693,6 +693,23 @@
             100% { opacity: 0; transform: translateY(-5px); filter: blur(4px); }
         }
 
+        .flash-1x1 {
+            animation: whiteFlash 0.6s ease-out forwards;
+        }
+        @keyframes whiteFlash {
+            0% { 
+                background: rgba(255, 255, 255, 0.9) !important; 
+                box-shadow: 0 0 20px 5px rgba(255, 255, 255, 0.8) inset, 0 0 15px rgba(255, 255, 255, 0.8);
+                transform: scale(1.1); 
+                z-index: 100;
+            }
+            100% { 
+                background: #16bd16 !important; /* 원래 내 유닛 색깔로 복귀 */
+                box-shadow: none;
+                transform: scale(1);
+            }
+        }
+
     </style>
 </head>
 <body>
@@ -950,7 +967,7 @@
             }
         }
 
-        // 🚨 신규 함수: 액션 버튼 클릭 시 모드 변경 (연료 체크 로직 추가!)
+        // 🚨 액션 버튼 클릭 시 모드 변경 (플래시 이펙트 추가)
         function setActionMode(mode) {
             if (!isMyTurn && gameStatus === 'PLAYING') return;
             // 현재 화면에 표시된 연료량을 숫자로 가져옵니다.
@@ -969,8 +986,27 @@
             document.querySelectorAll('.action-btn').forEach(btn => btn.classList.remove('active'));
             document.getElementById('btn-' + mode).classList.add('active');
             selected1x1Idx = -1; // 모드가 바뀌면 선택해제
-            renderMyGrid();
-            // 🚨 모드가 바뀔 때 저격(SNIPE)이면 라인 켜고, 아니면 끄기
+            
+            renderMyGrid(); // 1. 먼저 화면을 평소처럼 그립니다.
+
+            // 🚨 [신규 추가] MOVE 모드를 눌렀을 때, 살아있는 1x1 함선을 찾아 하얗게 반짝이게 합니다!
+            if (mode === 'MOVE') {
+                const cells = document.getElementById('my-grid').children;
+                myUnits.forEach(u => {
+                    // 1x1이면서 파괴되지 않은 유닛만 찾음
+                    if (u.type === '1x1' && !u.isHit) {
+                        u.cells.forEach(c => {
+                            if (cells[c]) {
+                                cells[c].classList.add('flash-1x1'); // 번쩍!
+                                // 0.6초 뒤에 클래스를 빼줘서, 나중에 또 누르면 다시 번쩍일 수 있게 함
+                                setTimeout(() => cells[c].classList.remove('flash-1x1'), 600);
+                            }
+                        });
+                    }
+                });
+            }
+
+            // 모드가 바뀔 때 저격(SNIPE)이면 라인 켜고, 아니면 끄기
             renderSniperLines(mode === 'SNIPE');
             
             const scopeLayer = document.getElementById('scope-layer');
