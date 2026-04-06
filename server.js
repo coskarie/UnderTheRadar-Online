@@ -283,6 +283,11 @@ io.on('connection', (socket) => {
                         opponent.bonusFuel = (opponent.bonusFuel || 0) + 2;
                         io.to(currentRoom).emit('systemMsg', "📦 강철 상자 피격! 다음 턴 보너스 연료 +2 적립.");
                     }
+                    // 🚨 [신규 추가] 1x1 파괴 시점 기록
+                    if (unit.type === '1x1' && unit.hitCells.length === unit.cells.length) {
+                        unit.destroyedTurn = room.turnCount || 0; // 파괴된 턴 수 저장
+                        io.to(currentRoom).emit('systemMsg', `⚠️ 기동함선(1x1) 파괴됨! 제조창(ㄷ) 생존 시 10턴(5프레이즈) 후 자동 복구됩니다.`);
+                    }
                 }
             });
         }
@@ -353,7 +358,7 @@ io.on('connection', (socket) => {
         updateRoomInfo(currentRoom);
     }); // socket.on('attack') 끝
 
-    // 9. 기동함선(1x1) 이동 엔진 (🚨 대면 모드 레이더 업그레이드)
+    // 9. 기동함선(1x1) 이동 및 보급 상자 획득 엔진
     socket.on('move1x1', (data) => {
         const room = rooms[currentRoom];
         if (!room || room.gameState !== 'PLAYING' || room.turn !== socket.id) return;
@@ -361,10 +366,11 @@ io.on('connection', (socket) => {
         const { from, to } = data;
         const player = room.players.find(p => p.id === socket.id);
         const opponent = room.players.find(p => p.id !== socket.id);
-        
+        const isPlayer1 = (player.id === room.players[0].id);
+
         if (player.fuel < 2) return socket.emit('systemMsg', "기동 실패: 연료가 2 필요합니다.");
 
-        // 🚨 가로 칸 수를 20에서 14로 수정
+        // 🚨 140칸 기준 인접 8방향 검증
         const fromX = from % 14, fromY = Math.floor(from / 14);
         const toX = to % 14, toY = Math.floor(to / 14);
         if (Math.abs(fromX - toX) > 1 || Math.abs(fromY - toY) > 1) {
@@ -374,13 +380,15 @@ io.on('connection', (socket) => {
         const unit = player.units.find(u => u.type === '1x1' && u.cells.includes(from) && !u.isHit);
         if (!unit) return;
 
+        // 이동 처리
         unit.cells = [to];
         player.fuel -= 2;
 
+        // 🎁 보급 상자 획득 판정 (거울 반전 좌표 처리)
         const absoluteTo = isPlayer1 ? to : (139 - to);
         if (room.bonusBox !== null && absoluteTo === room.bonusBox) {
-            player.fuel += 4; // 연료 +4 획득
-            room.bonusBox = null; // 상자 제거
+            player.fuel += 4; 
+            room.bonusBox = null; // 획득 후 상자 증발
             io.to(currentRoom).emit('systemMsg', `🎊 ${player.name} 지휘관이 보급 상자를 확보했습니다! (연료 +4⛽)`);
         }
 
@@ -388,7 +396,7 @@ io.on('connection', (socket) => {
         socket.emit('syncMovedUnit', { oldIdx: from, newIdx: to }); 
         socket.emit('systemMsg', "🏃 1x1 기동함선 이동 완료. (-2⛽)");
 
-        // 📡 레이더(L) 발각 판정 (내 toX는 상대방 입장에서는 13 - toX 열에 해당함!)
+        // 레이더 포착 여부
         const isSpotted = opponent.units.some(u => {
             if (u.type !== 'L') return false;
             const isAlive = u.cells.length > (u.hitCells ? u.hitCells.length : 0);
@@ -396,10 +404,10 @@ io.on('connection', (socket) => {
         });
 
         if (isSpotted) {
-            // 🚨 currentRoom(방 전체) ➡️ opponent.id(레이더 주인) 에게만 귓속말 전송!
             io.to(opponent.id).emit('systemMsg', "📡 [레이더 경보] 적 기동함선의 움직임이 포착되었습니다!");
         }
-        updateRoomInfo(currentRoom);
+        
+        updateRoomInfo(currentRoom); // 관전자 화면 갱신
     });
 
     // 7. 게임 종료 및 로비 초기화 로직
@@ -459,6 +467,40 @@ io.on('connection', (socket) => {
         room.turnCount = (room.turnCount || 0) + 1; // 🚨 전체 턴 카운트 증가
         const nextPlayer = room.players.find(p => p.id === nextTurnId);
         
+        // 🔧 [신규 추가] 제조창(ㄷ) 1x1 자동 재생성 시스템
+        room.players.forEach(p => {
+            const scout = p.units.find(u => u.type === '1x1');
+            const factory = p.units.find(u => u.type === 'ㄷ');
+
+            // 1. 1x1이 파괴되어 있고, 파괴된 시점이 기록되어 있는지 검증
+            if (scout && scout.isHit && scout.destroyedTurn !== undefined) {
+                
+                // 2. 제조창(ㄷ)이 단 1칸이라도 살아있는지 검증
+                const isFactoryAlive = factory && factory.cells.length > (factory.hitCells ? factory.hitCells.length : 0);
+                
+                // 3. 파괴된 지 10턴(5프레이즈)이 지났는지 검증
+                if (isFactoryAlive && (room.turnCount - scout.destroyedTurn >= 10)) {
+                    
+                    // 4. ㄷ 블럭의 "안쪽" 좌표 수학적 계산 (가장 좌측 상단 기준 +1칸 이동한 위치)
+                    let minX = 14, minY = 10;
+                    factory.cells.forEach(c => {
+                        const x = c % 14, y = Math.floor(c / 14);
+                        if (x < minX) minX = x;
+                        if (y < minY) minY = y;
+                    });
+                    const insideIdx = (minY + 1) * 14 + (minX + 1); 
+
+                    // 5. 1x1 부활 및 재배치
+                    scout.cells = [insideIdx]; // ㄷ 안쪽으로 좌표 강제 지정
+                    scout.hitCells = [];
+                    scout.isHit = false; // 부활!
+                    scout.destroyedTurn = undefined; // 기록 리셋
+
+                    io.to(currentRoom).emit('systemMsg', `🔧 ${p.name} 지휘관의 제조창(ㄷ)이 가동되어 1x1 기동함선을 자동 복구했습니다!`);
+                }
+            }
+        });
+
         // 🚨 7턴마다 보급 상자 생성 로직
         if (room.turnCount % 7 === 0) {
             const occupiedCells = new Set();
@@ -478,7 +520,7 @@ io.on('connection', (socket) => {
                 randomIdx = Math.floor(Math.random() * 140);
                 if (!occupiedCells.has(randomIdx)) {
                     room.bonusBox = randomIdx; // 보급 상자 위치 확정
-                    io.to(nextTurnId).parentElement; // 방 전체에 알림
+                    // (불필요한 parentElement 코드 삭제됨)
                     io.to(Object.keys(room.spectators).concat(room.players.map(p=>p.id))).emit('systemMsg', "🎁 전장에 보급 상자가 투하되었습니다! (7턴 보너스)");
                     break;
                 }
