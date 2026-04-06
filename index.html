@@ -879,6 +879,9 @@
         let lastClickY = 0;
         let lastAttackType = 'ATTACK';
 
+        let movingHitCells = []; // 본대 기동 시 유닛 피격 상태 보존용
+        let isFirstGameStart = true; // 최초 시작 오버레이 이펙트 제어용 플래그
+
         const UNIT_DESCRIPTIONS = {
             'ㄷ': '제조창: 기동함선이 파괴될 시 10턴 후 자동 복구합니다.',
             'L': '레이더: 해당 열에 적 기동함선이 진입하면 즉시 포착합니다.',
@@ -1158,15 +1161,21 @@
                 const unit = myUnits[unitIdx];
                 if (unit.isHit) return alert("이미 피격된 유닛은 이동할 수 없습니다!");
 
+                // 🚨 [신규 추가] 1x1 기동함선은 본대 기동(MOVING) 단계에서 재배치 불가!
+                if (gameStatus === 'MOVING' && unit.type === '1x1') {
+                    addGameLog("[차단] 1x1 기동함선은 본대 재배치로 이동할 수 없습니다.");
+                    return;
+                }
+
                 // 🚨 2번 규칙: 하나만 옮겼는지 판별하는 자물쇠 검사
                 if (gameStatus === 'MOVING') {
-                    // 이미 다른 놈을 움직였는데(movingOriginalState 존재), 그놈이 아닌 다른 유닛을 클릭한 경우
                     if (movingOriginalState !== null && !unit.isMoved) {
                         addGameLog("[차단] 1개의 유닛만 기동할 수 있습니다. 원래 자리(흰색)로 되돌리면 취소됩니다.");
                         return;
                     }
-                    // 처음으로 유닛을 집어드는 경우: 원본 위치 스냅샷 저장!
                     if (movingOriginalState === null) {
+                        // 🚨 [버그 수정] 집어들 때 이 유닛의 피격 기록(맞은 구멍)을 안전하게 백업!
+                        movingHitCells = unit.hitCells ? [...unit.hitCells] : []; 
                         movingOriginalState = { type: unit.type, cells: [...unit.cells] };
                     }
                 }
@@ -1204,6 +1213,7 @@
                 type: selectedUnitType, 
                 cells: cells, 
                 isHit: false, 
+                hitCells: (gameStatus === 'MOVING') ? movingHitCells : [], // 🚨 백업해둔 피격 기록 복원!
                 isMoved: (gameStatus === 'MOVING' && !isOriginalPos) // 제자리가 아니면 이동된 유닛으로 낙인!
             });
             
@@ -1448,7 +1458,9 @@
             const btn = document.getElementById('start-btn');
 
             isPlayer = !!me; 
-            gameStatus = data.gameState;
+            if (!(gameStatus === 'MOVING' && data.gameState === 'PLAYING')) {
+                gameStatus = data.gameState;
+            }
 
             // 🏷️ 이름표 DOM 가져오기
             const myRole = document.getElementById('my-role');
@@ -1507,8 +1519,7 @@
 
             // 🎁 보급 상자 화면 렌더링
             document.querySelectorAll('.bonus-box').forEach(el => el.classList.remove('bonus-box'));
-            if (data.bonusBox !== null) {
-                // P1 기준 화면인지 판별 (관전자는 무조건 P1 화면 기준)
+            if (data.bonusBox !== null && gameStatus !== 'ENDED') {
                 const isP1 = isPlayer ? (me.id === data.players[0].id) : true;
                 
                 const myGridCells = document.getElementById('my-grid').children;
@@ -1593,6 +1604,7 @@
         function changeRole(r) { socket.emit('changeRole', r); }
 
         socket.on('startPlacing', () => {
+            isFirstGameStart = true; // 최초 시작 플래그 ON!
             gameStatus = "PLACING";
             movingOriginalState = null;
             if (myUnits.length === 0) {
@@ -1613,17 +1625,23 @@
         });
 
         socket.on('startMoving', () => {
-            gameStatus = "MOVING"; // 이것은 5프레이즈 본대 재배치용 상태
+            gameStatus = "MOVING"; 
             movingOriginalState = null; 
             selectedUnitType = null;
             myUnits.forEach(u => u.isMoved = false); 
             
             const btn = document.getElementById('start-btn');
             btn.innerText = "본대 기동 확정"; 
-            btn.style.background = "rgba(155, 89, 182, 0.15)"; // 🚨 어두운 보라색
+            btn.style.background = "rgba(155, 89, 182, 0.15)";
             btn.style.color = "#9b59b6";
             btn.style.borderColor = "#9b59b6";
             btn.disabled = false;
+
+            // 🚨 기동을 위해 인벤토리 다시 열어주고 액션 패널 끄기
+            document.getElementById('action-panel').style.display = 'none';
+            document.getElementById('unit-inventory').style.display = 'flex';
+            renderInventory(); // 인벤토리 갱신
+
             addGameLog("[시스템] 본대 전술 기동 단계입니다. 1개의 유닛만 재배치할 수 있습니다. (1x1 제외)");
         });
 
@@ -1632,19 +1650,22 @@
             document.getElementById('fuel-display').style.display = 'block';
             document.getElementById('action-panel').style.display = 'flex';
             
-            // 🚨 게임이 시작되면 배치용 설명창을 숨깁니다.
             document.getElementById('unit-description').style.display = 'none';
+            document.getElementById('unit-inventory').style.display = 'none'; // 전투 중 인벤토리 숨김
 
-            setActionMode('ATTACK'); // 기본은 타격 모드
+            setActionMode('ATTACK'); 
             updateTurn(data.turn);
             addGameLog("[시스템] 전투 시작! 연료를 관리하며 액션을 선택하세요.");
             
-            // 쓰레기통(초기화) 버튼 숨기기
             document.getElementById('reset-btn').style.display = 'none';
 
-            const overlay = document.getElementById('startOverlay');
-            overlay.classList.add('active');
-            setTimeout(() => { overlay.classList.remove('active'); }, 2500);
+            // 🚨 최초 시작일 때만 ENGAGE SYSTEM 발동! (5프레이즈 기동 후엔 무시)
+            if (isFirstGameStart) {
+                const overlay = document.getElementById('startOverlay');
+                overlay.classList.add('active');
+                setTimeout(() => { overlay.classList.remove('active'); }, 2500);
+                isFirstGameStart = false; // 플래그 OFF!
+            }
         });
 
         // 🚨 아까 실수로 날아가 버린 연료 갱신 코드 완벽 복구!
@@ -1812,10 +1833,14 @@
             const btn = document.getElementById('start-btn');
             btn.disabled = false; 
             btn.innerText = "게임 종료"; 
-            btn.style.background = "rgba(142, 68, 173, 0.15)"; // 🚨 어두운 보라색
+            btn.style.background = "rgba(142, 68, 173, 0.15)";
             btn.style.color = "#9b59b6";
             btn.style.borderColor = "#9b59b6";
             addGameLog("[시스템] 게임 종료! 승자: " + data.winner);
+            
+            // 게임 끝났으니 모든 보급 상자 이펙트 제거!
+            document.querySelectorAll('.bonus-box').forEach(el => el.classList.remove('bonus-box'));
+            
             alert("게임 종료! 승자: " + data.winner);
         });
 
