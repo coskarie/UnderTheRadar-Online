@@ -1938,14 +1938,8 @@
                 // 내 시점인지 상대 시점인지 파악해서 어느 그리드에 그릴지 결정
                 let targetGridId = (data.attacker === socket.id) ? 'opponent-grid' : 'my-grid';
                 let targetCellIdx = (data.attacker === socket.id) ? data.attackIndex : data.targetIndex;
-                
-                // 해당 칸의 X, Y 좌표를 가져옴
                 const coords = getCellCoords(targetGridId, targetCellIdx);
-                
-                // 9개의 미사일이 한 번에 떨어지면 부자연스러우니 0~600ms 사이의 랜덤 시차를 두고 발사!
-                setTimeout(() => {
-                    triggerBombStrike(coords.x, coords.y);
-                }, Math.random() * 600);
+                triggerBombStrike(coords.x, coords.y);
             }
 
             if (data.attacker === socket.id) {
