@@ -367,7 +367,8 @@ io.on('connection', (socket) => {
                         attackIndex: 139 - expIdx, // 거울 반전 역계산
                         targetIndex: expIdx,
                         hit: isHit,
-                        blocked: false
+                        blocked: false,
+                        isBomb: true // 폭탄 공격임을 알리는 플래그
                     });
                 });
             }
