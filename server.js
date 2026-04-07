@@ -191,10 +191,10 @@ io.on('connection', (socket) => {
         if (!room || room.gameState !== 'PLAYING' || room.turn !== socket.id) return;
 
         const { index, type } = data;
+        
         const attackIndex = index;
-        // 🚨 140칸 시스템 거울 반전 공식 (0~139)
         const targetIndex = 139 - attackIndex;
-        const targetUnit = defender.units.find(u => u.cells.includes(attackIndex)); 
+        //const targetUnit = opponent.units.find(u => u.cells.includes(targetIndex));
 
         const attacker = room.players.find(p => p.id === socket.id);
         const opponent = room.players.find(p => p.id !== socket.id);
