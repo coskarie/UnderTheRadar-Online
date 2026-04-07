@@ -734,6 +734,17 @@
             animation: gridShake 0.4s cubic-bezier(.36,.07,.19,.97) both;
         }
 
+        .bomb-unit { 
+            background: #ff3300 !important; 
+            border: 1px solid #ffaa00 !important; 
+            box-shadow: 0 0 10px #ff3300 inset !important; 
+            animation: bombPulse 1s infinite alternate; 
+        }
+        @keyframes bombPulse { 
+            from { filter: brightness(1); } 
+            to { filter: brightness(1.8); box-shadow: 0 0 20px #ff3300 inset !important; } 
+        }
+
     </style>
 </head>
 <body>
@@ -919,7 +930,8 @@
             'I': '저격수: 마주보는 x좌표에 적을 공격합니다.',
             '1x1': '기동함선: 반경 2칸을 자유롭게 기동하며 보급을 확보합니다.',
             '1x2': '일반 소형 함선입니다.',
-            '📦': '강철 상자: 피격 시 상대에게 보너스 연료를 제공하는 미끼입니다.'
+            '📦': '강철 상자: 피격 시 상대에게 보너스 연료를 제공하는 미끼입니다.',
+            '💣': '시한폭탄: 피격 시 적의 동일 좌표 3x3 영역에 융단폭격'
         };
 
         const UNIT_SHAPES = {
@@ -930,11 +942,12 @@
             'I':  [[0,0],[1,0],[2,0],[3,0]],
             '1x1': [[0,0]],
             '1x2': [[0,0],[1,0]],
-            '📦': [[0,0]] // 📦 심리전 강철 상자 추가!
+            '📦': [[0,0]],
+            '💣': [[0,0]]
         };
 
         // 인벤토리에 강철 상자 1개 추가
-        let inventory = { 'ㄷ':1, 'L':1, 'T':1, 'ㅗ':1, 'I':1, '1x1':1, '1x2':1, '📦':1 };
+        let inventory = { 'ㄷ':1, 'L':1, 'T':1, 'ㅗ':1, 'I':1, '1x1':1, '1x2':1, '📦':1, '💣':1 };
 
         function joinGame() {
             myName = document.getElementById('name-input').value;
@@ -988,15 +1001,45 @@
                 const mCell = document.createElement('div');
                 mCell.onmouseenter = function() { showGhost(i); };
                 mCell.onclick = function() { 
-                    // 내 턴이고 기동(MOVE) 모드일 때는 1x1 선택 및 이동 로직으로 빠짐
-                    if(gameStatus === 'PLAYING' && isMyTurn && actionMode === 'MOVE') {
-                        handleMove1x1Click(i);
+                    if(gameStatus === 'PLAYING' && isMyTurn) {
+                        if (actionMode === 'MOVE') {
+                            handleMove1x1Click(i);
+                            return;
+                        }
+
+                        // 🚨 [신규] 폭발 블럭(💣) 클릭 시 기폭 로직!
+                        const bombUnit = myUnits.find(u => u.type === '💣' && u.cells.includes(i) && !u.isHit);
+                        if (bombUnit) {
+                            if(confirm("⚠️ 시한폭탄을 기폭하시겠습니까?\n(상대 진영 동일 좌표 3x3 범위 타격)")) {
+                                socket.emit('detonateBomb', { index: i });
+                            }
+                            return;
+                        }
                     } else {
                         placeOrPickUnit(i); 
                     }
                 };
                 myGrid.appendChild(mCell);
             }
+        }
+
+        function get3x3Area(centerIdx) {
+            const cX = centerIdx % 14;
+            const cY = Math.floor(centerIdx / 14);
+            let area = [];
+            
+            for(let dy = -1; dy <= 1; dy++) {
+                for(let dx = -1; dx <= 1; dx++) {
+                    const nx = cX + dx;
+                    const ny = cY + dy;
+                    
+                    // 🚨 14x10 격자 밖으로 벗어난 좌표는 폭발에서 제외
+                    if(nx >= 0 && nx < 14 && ny >= 0 && ny < 10) {
+                        area.push(ny * 14 + nx);
+                    }
+                }
+            }
+            return area;
         }
 
         // 🚨 액션 버튼 클릭 시 모드 변경 (플래시 이펙트 추가)
@@ -1295,7 +1338,10 @@
                     // 🚨 강철 상자(📦)일 경우 갈색 클래스 덮어씌우기
                     if (u.type === '📦') {
                         cells[c].classList.add('box-unit'); 
+                    } else if (u.type === '💣') {
+                        cells[c].classList.add('bomb-unit'); // 🚨 폭탄 전용 클래스 부착
                     }
+
 
                     if(u.isHit) cells[c].style.opacity = "0.6";
                     if(u.hitCells && u.hitCells.includes(c)) cells[c].classList.add('hit-unit');
