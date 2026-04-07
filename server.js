@@ -193,7 +193,8 @@ io.on('connection', (socket) => {
         const { index, type } = data;
         const attackIndex = index;
         // 🚨 140칸 시스템 거울 반전 공식 (0~139)
-        const targetIndex = 139 - attackIndex; 
+        const targetIndex = 139 - attackIndex;
+        const targetUnit = defender.units.find(u => u.cells.includes(attackIndex)); 
 
         const attacker = room.players.find(p => p.id === socket.id);
         const opponent = room.players.find(p => p.id !== socket.id);
@@ -241,6 +242,7 @@ io.on('connection', (socket) => {
         let hitResult = false;
         let hitType = null;
         let shieldBlocked = false;
+        let bombTriggered = false; // 🚨 [신규] 폭발 블럭 발동 여부 확인용 플래그
 
         // 상대방 T블럭 방패 판정
         opponent.units.forEach(u => {
@@ -265,13 +267,21 @@ io.on('connection', (socket) => {
         if (!shieldBlocked) {
             opponent.units.forEach(unit => {
                 if (unit.cells.includes(targetIndex)) {
+                    // 🚨 [신규] 이미 맞은 칸인지 확인
+                    const isNewHit = !(unit.hitCells && unit.hitCells.includes(targetIndex));
+
                     if (!unit.hitCells) unit.hitCells = [];
-                    if (!unit.hitCells.includes(targetIndex)) {
+                    if (isNewHit) {
                         unit.hitCells.push(targetIndex);
                         unit.isHit = true;
                     }
                     hitResult = true;
                     hitType = unit.type;
+
+                    // 🚨 [신규] 지뢰(💣) 폭발 조건: 새로운 타격이고, 그게 폭발 블럭일 때!
+                    if (unit.type === '💣' && isNewHit) {
+                        bombTriggered = true; 
+                    }
 
                     // 특수 블럭(ㄷ, 📦) 파괴 효과
                     if (unit.type === 'ㄷ' && unit.hitCells.length === unit.cells.length) {
@@ -283,7 +293,7 @@ io.on('connection', (socket) => {
                         opponent.bonusFuel = (opponent.bonusFuel || 0) + 2;
                         io.to(currentRoom).emit('systemMsg', "📦 강철 상자 피격! 다음 턴 보너스 연료 +2 적립.");
                     }
-                    // 🚨 [신규 추가] 1x1 파괴 시점 기록
+                    // 1x1 파괴 시점 기록
                     if (unit.type === '1x1' && unit.hitCells.length === unit.cells.length) {
                         unit.destroyedTurn = room.turnCount || 0; // 파괴된 턴 수 저장
                         io.to(currentRoom).emit('systemMsg', `⚠️ 기동함선(1x1) 파괴됨! 제조창(ㄷ) 생존 시 10턴(5프레이즈) 후 자동 복구됩니다.`);
@@ -326,6 +336,40 @@ io.on('connection', (socket) => {
                     io.to(currentRoom).emit('systemMsg', "🛡️ T블럭 타격! (저격 능력이므로 턴이 유지됩니다.)");
                 }
                 io.to(currentRoom).emit('attackResult', { attacker: socket.id, attackIndex, targetIndex, hit: true, nextTurn: socket.id });
+            }
+
+            // 🚨🚨 [신규 핵심 로직] 지뢰(💣) 폭발! 카운터 3x3 데미지 반사 🚨🚨
+            if (bombTriggered) {
+                io.to(currentRoom).emit('systemMsg', `🚨 경보! 지뢰(💣) 피격! 공격자 진영에 3x3 융단 폭격이 가해집니다!`);
+
+                // 공격자의 진영 기준 좌표(attackIndex)를 중심으로 3x3 범위를 가져옴
+                const explosionArea = get3x3Area(attackIndex); 
+
+                explosionArea.forEach(expIdx => {
+                    let isHit = false;
+                    
+                    // 공격자의 유닛들을 확인하여 타격 판정 (내 살 깎아먹기)
+                    attacker.units.forEach(u => {
+                        if (u.cells.includes(expIdx)) {
+                            isHit = true;
+                            if (!u.hitCells) u.hitCells = [];
+                            if (!u.hitCells.includes(expIdx)) {
+                                u.hitCells.push(expIdx);
+                                u.isHit = true;
+                            }
+                        }
+                    });
+
+                    // 9번의 카운터 폭격을 각각 전송!
+                    // 상대방(opponent)이 나를 때린 것처럼 위장해서 신호를 쏘면 화면 동기화 완벽 해결!
+                    io.to(currentRoom).emit('attackResult', {
+                        attacker: opponent.id, 
+                        attackIndex: 139 - expIdx, // 거울 반전 역계산
+                        targetIndex: expIdx,
+                        hit: isHit,
+                        blocked: false
+                    });
+                });
             }
         } 
         else {
