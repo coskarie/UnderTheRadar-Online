@@ -1006,15 +1006,6 @@
                             handleMove1x1Click(i);
                             return;
                         }
-
-                        // 🚨 [신규] 폭발 블럭(💣) 클릭 시 기폭 로직!
-                        const bombUnit = myUnits.find(u => u.type === '💣' && u.cells.includes(i) && !u.isHit);
-                        if (bombUnit) {
-                            if(confirm("⚠️ 시한폭탄을 기폭하시겠습니까?\n(상대 진영 동일 좌표 3x3 범위 타격)")) {
-                                socket.emit('detonateBomb', { index: i });
-                            }
-                            return;
-                        }
                     } else {
                         placeOrPickUnit(i); 
                     }
