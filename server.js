@@ -368,7 +368,7 @@ io.on('connection', (socket) => {
                         targetIndex: expIdx,
                         hit: isHit,
                         blocked: false,
-                        isBomb: true // 폭탄 공격임을 알리는 플래그
+                        isBomb: expIdx === targetIndex // ✨ 정중앙 1칸에만 미사일 발사 신호!
                     });
                 });
             }
