@@ -273,15 +273,15 @@
 
         /* 1. 🧱 공통 뼈대 (크기, 격자 칸수, 테두리 등은 그대로 공유) */
         .grid { 
-            width: 100%; /* 95%에서 100%로 변경하여 래퍼에 꽉 차게! */
-            aspect-ratio: 14 / 10; /* 🚨 [핵심] 고정 높이를 지우고 14:10 황금 비율 적용! */
-            height: auto; 
-            margin: 0 auto; 
+            position: absolute;
+            inset: 0; /* top:0, left:0, right:0, bottom:0 과 동일 (래퍼에 완벽히 꽉 참) */
+            width: 100%; 
+            height: 100%; 
+            margin: 0; 
             border: 2px solid #62ff00; 
             display: grid; 
             grid-template-columns: repeat(14, 1fr); 
             grid-template-rows: repeat(10, 1fr); 
-            flex-shrink: 0;
             box-sizing: border-box; 
         }
 
@@ -454,7 +454,12 @@
         .grid-container-wrapper {
             background: rgba(0, 0, 0, 0.4);
             border: 1px solid rgba(46, 204, 113, 0.3);
-            padding: 10px; position: relative;
+            padding: 8px; /* 패딩을 살짝 줄여서 공간 확보 */
+            position: relative;
+            width: 100%; 
+            height: 160px; /* 🚨 [핵심] 높이를 160px로 확 줄여서 스크롤을 없애고 직사각형 칸으로 만듦 */
+            box-sizing: border-box; /* 너비 계산 오차 방지 */
+            flex-shrink: 0;
         }
 
         #foglayer_01, #foglayer_02, #foglayer_03 { height: 100%; position: absolute; width: 200%; }
@@ -768,9 +773,9 @@
             </div>
 
             <div class="grid-container-wrapper">
-                <div style="position: relative; width: 100%; aspect-ratio: 14 / 10;">
-                    <div id="opponent-grid" class="grid" style="width: 100%; margin: 0;"></div>
-                    <div class="fogwrapper">
+                <div style="position: relative; width: 100%; height: 100%;">
+                    <div id="opponent-grid" class="grid"></div>
+                    <div class="fogwrapper" style="position: absolute; inset: 0;">
                         <div id="foglayer_01" class="fog"><div class="image01"></div><div class="image02"></div></div>
                         <div id="foglayer_02" class="fog"><div class="image01"></div><div class="image02"></div></div>
                         <div id="foglayer_03" class="fog"><div class="image01"></div><div class="image02"></div></div>
@@ -778,33 +783,17 @@
                 </div>
             </div>
 
-            <div class="ctrl-group">
-                <button id="start-btn" onclick="handleButtonClick()">SYSTEM READY</button>
-                <button id="reset-btn" class="sub-btn" style="display: none; background:rgba(251, 133, 0, 0.2); border:1px solid #fb8500; color:#fb8500;" onclick="resetPlacement()">RESET 🧹</button>
-            </div>
-            
-            <div class="name-label">
-                <span id="my-role" style="opacity:0.5;">● COMMANDER:</span> 
-                <span id="my-name-display">대기 중</span> 
-                <span id="my-v" class="v-mark" style="display: none;">[READY]</span>
-            </div>
-
-            <div style="display: flex; gap: 10px; align-items: center;">
-                <div id="fuel-display" style="flex: 1; color: #2ecc71;">ENERGY: <span id="current-fuel">8</span> / <span id="max-fuel">8</span></div>
-                <div id="phrase-display" style="flex: 1; color: #2ecc71; text-align: right;">PHRASE: [ 1 ]</div>
-            </div>
-
-            <div id="action-panel" class="action-panel">
-                <button id="btn-ATTACK" class="action-btn active" onclick="setActionMode('ATTACK')">🎯 ATTACK</button>
-                <button id="btn-SNIPE" class="action-btn" onclick="setActionMode('SNIPE')">🔫 SNIPE (-1)</button>
-                <button id="btn-MOVE" class="action-btn" onclick="setActionMode('MOVE')">🏃 MOVE (-2)</button>
-            </div>
+            <div class="ctrl-group">...</div>
+            <div class="name-label">...</div>
+            <div style="display: flex; gap: 10px; align-items: center;">...</div>
+            <div id="action-panel" class="action-panel">...</div>
 
             <div class="grid-container-wrapper">
-                <div style="position: relative; width: 100%; aspect-ratio: 14 / 10;">
-                    <div id="my-grid" class="grid" style="position: absolute; top: 0; left: 0; right: 0; bottom: 0; width: 100%; margin: 0;" onmouseleave="clearGhost()"></div>
+                <div style="position: relative; width: 100%; height: 100%;">
+                    <div id="my-grid" class="grid" onmouseleave="clearGhost()"></div>
                 </div>
             </div>
+
             <div id="unit-inventory" class="inventory"></div>
 
             <div id="unit-description" class="unit-desc-panel">
