@@ -402,6 +402,25 @@ io.on('connection', (socket) => {
         updateRoomInfo(currentRoom);
     }); // socket.on('attack') 끝
 
+    function get3x3Area(centerIdx) {
+        const cX = centerIdx % 14;
+        const cY = Math.floor(centerIdx / 14);
+        let area = [];
+        
+        for(let dy = -1; dy <= 1; dy++) {
+            for(let dx = -1; dx <= 1; dx++) {
+                const nx = cX + dx;
+                const ny = cY + dy;
+                
+                // 14x10 격자 밖으로 벗어난 좌표는 폭발에서 제외
+                if(nx >= 0 && nx < 14 && ny >= 0 && ny < 10) {
+                    area.push(ny * 14 + nx);
+                }
+            }
+        }
+        return area;
+    }
+
     // 9. 기동함선(1x1) 이동 및 보급 상자 획득 엔진
     socket.on('move1x1', (data) => {
         const room = rooms[currentRoom];
@@ -602,7 +621,7 @@ io.on('connection', (socket) => {
         }
 
         if (nextPlayer) {
-            const aliveShips = nextPlayer.units.filter(u => u.type !== '📦' && u.cells.length > (u.hitCells ? u.hitCells.length : 0)).length;
+            const aliveShips = nextPlayer.units.filter(u => u.type !== '📦' && u.type !== '💣' && u.cells.length > (u.hitCells ? u.hitCells.length : 0)).length;
             
             // 🚨 1. 기본 연료 계산 (최대 연료 - 생존 함선 수)
             let baseFuel = nextPlayer.maxFuel - aliveShips; 
