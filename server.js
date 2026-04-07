@@ -343,7 +343,7 @@ io.on('connection', (socket) => {
                 io.to(currentRoom).emit('systemMsg', `🚨 경보! 지뢰(💣) 피격! 공격자 진영에 3x3 융단 폭격이 가해집니다!`);
 
                 // 공격자의 진영 기준 좌표(attackIndex)를 중심으로 3x3 범위를 가져옴
-                const explosionArea = get3x3Area(attackIndex); 
+                const explosionArea = get3x3Area(targetIndex);
 
                 explosionArea.forEach(expIdx => {
                     let isHit = false;
