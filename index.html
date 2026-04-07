@@ -457,7 +457,7 @@
             padding: 8px;
             position: relative;
             width: 100%; 
-            height: 200px; 
+            height: 220px; 
             box-sizing: border-box;
             flex-shrink: 0;
         }
@@ -714,6 +714,24 @@
                 box-shadow: none;
                 transform: scale(1);
             }
+        }
+
+        @keyframes gridShake {
+            0% { transform: translate(1px, 1px) rotate(0deg); }
+            10% { transform: translate(-1px, -2px) rotate(-1deg); }
+            20% { transform: translate(-3px, 0px) rotate(1deg); }
+            30% { transform: translate(3px, 2px) rotate(0deg); }
+            40% { transform: translate(1px, -1px) rotate(1deg); }
+            50% { transform: translate(-1px, 2px) rotate(-1deg); }
+            60% { transform: translate(-3px, 1px) rotate(0deg); }
+            70% { transform: translate(3px, 1px) rotate(-1deg); }
+            80% { transform: translate(-1px, -1px) rotate(1deg); }
+            90% { transform: translate(1px, 2px) rotate(0deg); }
+            100% { transform: translate(0px, 0px) rotate(0deg); }
+        }
+
+        .shaking {
+            animation: gridShake 0.4s cubic-bezier(.36,.07,.19,.97) both;
         }
 
     </style>
@@ -1692,35 +1710,49 @@
             }
         });
 
-        // 🚨 플레이어 전용: 타격 결과 연출   
+        // 🚨 플레이어 전용: 타격 결과 연출 (쉐이크 효과 추가!)
         socket.on('attackResult', data => {
             if (!isPlayer) return; 
+
+            // 🎯 [신규] 특정 그리드의 껍데기(wrapper)를 흔드는 함수
+            function triggerShake(gridId) {
+                const gridWrapper = document.getElementById(gridId).closest('.grid-container-wrapper');
+                if (gridWrapper) {
+                    gridWrapper.classList.remove('shaking');
+                    void gridWrapper.offsetWidth; // 꼼수: 애니메이션 연속 재생을 위한 리플로우 강제 발생
+                    gridWrapper.classList.add('shaking');
+                    setTimeout(() => { gridWrapper.classList.remove('shaking'); }, 400);
+                }
+            }
             
             if (data.attacker === socket.id) {
-                // (이펙트 터지는 부분 생략... 기존 코드 유지)
-                
-                // 🎨 타격 칸 색칠 및 방어막 연출
+                // [내가 공격했을 때] -> 상대방 그리드(opponent-grid) 처리
                 if (!data.blocked) {
                     document.getElementById('opponent-grid').children[data.attackIndex].classList.add(data.hit ? 'hit-unit' : 'miss-cell');
+                    // 💥 명중(hit)했다면 상대방 그리드 흔들기!
+                    if (data.hit) triggerShake('opponent-grid');
                 } else {
-                    // 🛡️ 상대방 T블럭 방어막 발동 연출!
                     const cell = document.getElementById('opponent-grid').children[data.attackIndex];
                     cell.classList.add('shield-block');
-                    setTimeout(() => cell.classList.remove('shield-block'), 500); // 0.5초 뒤 파직! 하고 사라짐
+                    setTimeout(() => cell.classList.remove('shield-block'), 500); 
+                    // 🛡️ 방어막(T)을 쳤을 때도 묵직하게 흔들리게 하려면 아래 주석 해제!
+                    // triggerShake('opponent-grid'); 
                 }
                 addGameLog(`내 공격: ${data.hit ? "💥 적중!" : (data.blocked ? "🛡️ 방어막(T)에 막힘!" : "🌊 불발")}`);
+
             } else {
-                // 내가 방어할 때
+                // [상대가 나를 공격했을 때] -> 내 그리드(my-grid) 처리
                 if (!data.blocked) {
                     document.getElementById('my-grid').children[data.targetIndex].classList.add(data.hit ? 'hit-unit' : 'miss-cell');
+                    // 💥 내 유닛이 명중(hit) 당했다면 내 그리드 흔들기!
+                    if (data.hit) triggerShake('my-grid');
                 } else {
-                    // 🛡️ 내 T블럭 방어막 발동 연출!
                     const cell = document.getElementById('my-grid').children[data.targetIndex];
                     cell.classList.add('shield-block');
                     setTimeout(() => cell.classList.remove('shield-block'), 500);
+                    // 🛡️ 내 방어막이 맞았을 때도 흔들리게 하려면 아래 주석 해제!
+                    // triggerShake('my-grid');
                 }
-                
-                // (피격 기록 저장 로직 생략... 기존 코드 유지)
                 addGameLog(`상대 공격: ${data.hit ? "💥 적중!" : (data.blocked ? "🛡️ 방어막(T) 작동!" : "🌊 불발")}`);
             }
             
