@@ -1024,22 +1024,21 @@
         }
 
         function get3x3Area(centerIdx) {
-            const cX = centerIdx % 14;
-            const cY = Math.floor(centerIdx / 14);
-            let area = [];
-            
-            for(let dy = -1; dy <= 1; dy++) {
-                for(let dx = -1; dx <= 1; dx++) {
-                    const nx = cX + dx;
-                    const ny = cY + dy;
-                    
-                    // 🚨 14x10 격자 밖으로 벗어난 좌표는 폭발에서 제외
-                    if(nx >= 0 && nx < 14 && ny >= 0 && ny < 10) {
-                        area.push(ny * 14 + nx);
+            const result = [];
+            const centerX = centerIdx % 14;
+            const centerY = Math.floor(centerIdx / 14);
+
+            for (let dy = -1; dy <= 1; dy++) {
+                for (let dx = -1; dx <= 1; dx++) {
+                    const nx = centerX + dx;
+                    const ny = centerY + dy;
+                    // 0~13 범위 안에 있을 때만 포함
+                    if (nx >= 0 && nx <= 13 && ny >= 0 && ny <= 9) {
+                        result.push(ny * 14 + nx);
                     }
                 }
             }
-            return area;
+            return result;
         }
 
         // 🚨 액션 버튼 클릭 시 모드 변경 (플래시 이펙트 추가)
@@ -1776,13 +1775,14 @@
                 if (!data.blocked) {
                     document.getElementById('opponent-grid').children[data.attackIndex].classList.add(data.hit ? 'hit-unit' : 'miss-cell');
                     // 💥 명중(hit)했다면 상대방 그리드 흔들기!
-                    if (data.hit) triggerShake('opponent-grid');
+                    if (data.hit) {
+                        triggerShake('opponent-grid');
+                        createRoughExplosion(lastClickX, lastClickY);
+                    }
                 } else {
                     const cell = document.getElementById('opponent-grid').children[data.attackIndex];
                     cell.classList.add('shield-block');
                     setTimeout(() => cell.classList.remove('shield-block'), 500); 
-                    // 🛡️ 방어막(T)을 쳤을 때도 묵직하게 흔들리게 하려면 아래 주석 해제!
-                    // triggerShake('opponent-grid'); 
                 }
                 addGameLog(`내 공격: ${data.hit ? "💥 적중!" : (data.blocked ? "🛡️ 방어막(T)에 막힘!" : "🌊 불발")}`);
 
