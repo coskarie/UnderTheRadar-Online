@@ -783,10 +783,27 @@
                 </div>
             </div>
 
-            <div class="ctrl-group">...</div>
-            <div class="name-label">...</div>
-            <div style="display: flex; gap: 10px; align-items: center;">...</div>
-            <div id="action-panel" class="action-panel">...</div>
+            <div class="ctrl-group">
+                <button id="start-btn" onclick="handleButtonClick()">SYSTEM READY</button>
+                <button id="reset-btn" class="sub-btn" style="display: none; background:rgba(251, 133, 0, 0.2); border:1px solid #fb8500; color:#fb8500;" onclick="resetPlacement()">RESET 🧹</button>
+            </div>
+            
+            <div class="name-label">
+                <span id="my-role" style="opacity:0.5;">● COMMANDER:</span> 
+                <span id="my-name-display">대기 중</span> 
+                <span id="my-v" class="v-mark" style="display: none;">[READY]</span>
+            </div>
+
+            <div style="display: flex; gap: 10px; align-items: center;">
+                <div id="fuel-display" style="flex: 1; color: #2ecc71;">ENERGY: <span id="current-fuel">8</span> / <span id="max-fuel">8</span></div>
+                <div id="phrase-display" style="flex: 1; color: #2ecc71; text-align: right;">PHRASE: [ 1 ]</div>
+            </div>
+
+            <div id="action-panel" class="action-panel">
+                <button id="btn-ATTACK" class="action-btn active" onclick="setActionMode('ATTACK')">🎯 ATTACK</button>
+                <button id="btn-SNIPE" class="action-btn" onclick="setActionMode('SNIPE')">🔫 SNIPE (-1)</button>
+                <button id="btn-MOVE" class="action-btn" onclick="setActionMode('MOVE')">🏃 MOVE (-2)</button>
+            </div>
 
             <div class="grid-container-wrapper">
                 <div style="position: relative; width: 100%; height: 100%;">
@@ -1720,11 +1737,6 @@
             }
             addGameLog("📡 [레이더 포착] 적 기동함선(1x1)의 이동 궤적을 감지했습니다!");
         });
-
-        // (기존 코드) 턴 업데이트 함수
-        function updateTurn(turnId) {
-             // ... (생략) ...
-        }
 
         function updateTurn(turnId) {
             isMyTurn = (socket.id === turnId);
