@@ -745,6 +745,65 @@
             to { filter: brightness(1.8); box-shadow: 0 0 20px #ff3300 inset !important; } 
         }
 
+        /* =========================================
+           🚀 전술 미사일 폭격 이펙트 (Tactical Strike)
+           ========================================= */
+        .reticle {
+            position: fixed; width: 80px; height: 80px;
+            border: 1px solid rgba(0, 255, 0, 0.15); border-radius: 50%;
+            transform: translate(-50%, -50%); opacity: 0; pointer-events: none;
+            z-index: 6000; display: flex; justify-content: center; align-items: center;
+        }
+        .reticle::before { content: ''; position: absolute; width: 100px; height: 1px; background: rgba(0, 255, 0, 0.4); }
+        .reticle::after { content: ''; position: absolute; width: 1px; height: 100px; background: rgba(0, 255, 0, 0.4); }
+
+        .scan-percent {
+            position: absolute; right: -45px; bottom: -25px;
+            color: #00ff00; font-family: 'Inconsolata', monospace; font-size: 14px; font-weight: bold;
+            text-shadow: 0 0 5px rgba(0, 255, 0, 0.8); pointer-events: none;
+        }
+
+        .marks-container { position: absolute; width: 100%; height: 100%; pointer-events: none; }
+        .mark { position: absolute; background: rgba(0, 255, 0, 0.4); }
+        .h-mark { width: 1px; height: 6px; top: 50%; transform: translateY(-50%); }
+        .v-mark { height: 1px; width: 6px; left: 50%; transform: translateX(-50%); }
+
+        .triangle-container {
+            position: absolute; width: 100%; height: 100%;
+            animation: lock-on-rotate 0.25s cubic-bezier(0.15, 0.85, 0.35, 1) forwards;
+        }
+        .tri { position: absolute; width: 0; height: 0; border-left: 5px solid transparent; border-right: 5px solid transparent; border-bottom: 10px solid #00ff00; }
+        .tri-top { top: -25px; left: 50%; transform: translateX(-50%) rotate(180deg); }
+        .tri-bottom { bottom: -25px; left: 50%; transform: translateX(-50%) rotate(0deg); }
+        .tri-left { left: -25px; top: 50%; transform: translateY(-50%) rotate(90deg); }
+        .tri-right { right: -25px; top: 50%; transform: translateY(-50%) rotate(-90deg); }
+
+        @keyframes lock-on-rotate { 0% { transform: rotate(0deg) scale(1.8); opacity: 0; } 100% { transform: rotate(360deg) scale(1); opacity: 1; } }
+        .reticle.active { opacity: 1; }
+
+        .missile {
+            position: fixed; width: 30px; height: 6px; background: linear-gradient(90deg, #eee, #999);
+            border-radius: 3px; box-shadow: 0 0 15px rgba(255, 200, 100, 0.8);
+            z-index: 6001; transform-origin: center; pointer-events: none;
+        }
+        .missile::after {
+            content: ''; position: absolute; left: -15px; top: 0; width: 15px; height: 100%;
+            background: #ffcc00; filter: blur(3px); border-radius: 50% 0 0 50%;
+        }
+        .trail-dot {
+            position: fixed; width: 3px; height: 3px; background-color: rgba(150, 150, 150, 0.4);
+            border-radius: 50%; pointer-events: none; z-index: 5999;
+        }
+        .missile-explosion {
+            position: fixed; width: 5px; height: 5px; background: #fff; border-radius: 50%;
+            pointer-events: none; z-index: 6002;
+            box-shadow: 0 0 30px 15px #fff, 0 0 60px 30px #ff4500, 0 0 100px 50px #ffcc00;
+            transform: translate(-50%, -50%);
+        }
+        @keyframes explode-anim { 0% { transform: translate(-50%, -50%) scale(1); opacity: 1; } 100% { transform: translate(-50%, -50%) scale(15); opacity: 0; } }
+        @keyframes shake-screen { 0%, 100% { transform: translate(0, 0); } 25% { transform: translate(-5px, 5px); } 50% { transform: translate(5px, -5px); } 75% { transform: translate(-5px, -5px); } }
+        .shake-active { animation: shake-screen 0.1s linear infinite; }
+
     </style>
 </head>
 <body>
@@ -1169,6 +1228,119 @@
                 reticleLayer.style.top = targetY + 'px';
             }
         });
+
+
+        // =========================================
+        // 🚀 미사일 융단폭격 엔진 (형님이 만든 코드 기반)
+        // =========================================
+        function triggerBombStrike(targetX, targetY) {
+            const body = document.body;
+            const reticle = document.createElement('div');
+            reticle.className = 'reticle';
+            reticle.style.left = targetX + 'px';
+            reticle.style.top = targetY + 'px';
+
+            const percentDisplay = document.createElement('div');
+            percentDisplay.className = 'scan-percent';
+            percentDisplay.innerText = '0%';
+            reticle.appendChild(percentDisplay);
+
+            const marksContainer = document.createElement('div');
+            marksContainer.className = 'marks-container';
+            [12, 24, 36].forEach(offset => {
+                const addMark = (cls, l, t) => {
+                    const m = document.createElement('div'); m.className = `mark ${cls}`; m.style.left = l; m.style.top = t; marksContainer.appendChild(m);
+                };
+                addMark('h-mark', `calc(50% - ${offset}px)`, '50%'); addMark('h-mark', `calc(50% + ${offset}px)`, '50%');
+                addMark('v-mark', '50%', `calc(50% - ${offset}px)`); addMark('v-mark', '50%', `calc(50% + ${offset}px)`);
+            });
+            reticle.appendChild(marksContainer);
+
+            const triContainer = document.createElement('div');
+            triContainer.className = 'triangle-container';
+            ['top', 'bottom', 'left', 'right'].forEach(pos => {
+                const tri = document.createElement('div'); tri.className = `tri tri-${pos}`; triContainer.appendChild(tri);
+            });
+            reticle.appendChild(triContainer);
+            body.appendChild(reticle);
+
+            setTimeout(() => reticle.classList.add('active'), 10);
+
+            // 미사일 발사 (약간의 체공 시간)
+            const missile = document.createElement('div');
+            missile.className = 'missile';
+            body.appendChild(missile);
+
+            const sx = Math.random() * window.innerWidth;
+            const sy = -100;
+            const cpX = (sx + targetX) / 2;
+            const cpY = Math.min(sy, targetY) - 400; 
+
+            const duration = 700 + Math.random() * 200; // 700~900ms 랜덤 속도로 낙하 (시차 구현)
+            const startTime = performance.now();
+
+            function animate(currentTime) {
+                const elapsed = currentTime - startTime;
+                const t = Math.min(elapsed / duration, 1);
+
+                percentDisplay.innerText = Math.floor(t * 100) + '%';
+
+                const curX = Math.pow(1 - t, 2) * sx + 2 * (1 - t) * t * cpX + Math.pow(t, 2) * targetX;
+                const curY = Math.pow(1 - t, 2) * sy + 2 * (1 - t) * t * cpY + Math.pow(t, 2) * targetY;
+
+                const nextT = Math.min(t + 0.01, 1);
+                const nextX = Math.pow(1 - nextT, 2) * sx + 2 * (1 - nextT) * nextT * cpX + Math.pow(nextT, 2) * targetX;
+                const nextY = Math.pow(1 - nextT, 2) * sy + 2 * (1 - nextT) * nextT * cpY + Math.pow(nextT, 2) * targetY;
+                
+                const angle = Math.atan2(nextY - curY, nextX - curX) * 180 / Math.PI;
+
+                missile.style.left = curX + 'px';
+                missile.style.top = curY + 'px';
+                missile.style.transform = `translate(-50%, -50%) rotate(${angle}deg)`;
+
+                if (elapsed % 30 < 20) {
+                    const dot = document.createElement('div');
+                    dot.className = 'trail-dot'; dot.style.left = curX + 'px'; dot.style.top = curY + 'px';
+                    body.appendChild(dot);
+                    setTimeout(() => { dot.style.opacity = '0'; setTimeout(() => dot.remove(), 500); }, 600);
+                }
+
+                if (t < 1) {
+                    requestAnimationFrame(animate);
+                } else {
+                    triggerMissileExplosion(targetX, targetY);
+                    missile.remove();
+                    reticle.remove();
+                }
+            }
+            requestAnimationFrame(animate);
+        }
+
+        function triggerMissileExplosion(x, y) {
+            const expo = document.createElement('div');
+            expo.className = 'missile-explosion';
+            expo.style.left = x + 'px';
+            expo.style.top = y + 'px';
+            expo.style.animation = 'explode-anim 0.4s ease-out forwards';
+            document.body.appendChild(expo);
+
+            document.body.classList.add('shake-active');
+            setTimeout(() => {
+                expo.remove();
+                document.body.classList.remove('shake-active');
+            }, 300);
+        }
+
+        // 🎯 격자판 번호를 주면 그 칸의 정중앙 X, Y 픽셀 좌표를 찾아오는 마법의 함수!
+        function getCellCoords(gridId, index) {
+            const cell = document.getElementById(gridId).children[index];
+            if (!cell) return { x: window.innerWidth / 2, y: window.innerHeight / 2 };
+            const rect = cell.getBoundingClientRect();
+            return {
+                x: rect.left + rect.width / 2,
+                y: rect.top + rect.height / 2
+            };
+        }
 
         // 💥 파편 생성 함수
         function createParticles(x, y) {
@@ -1761,6 +1933,21 @@
                 }
             }
             
+            // 🚀 [추가] 서버에서 폭탄(미사일) 신호가 오면 이펙트 발동!
+            if (data.isBomb) {
+                // 내 시점인지 상대 시점인지 파악해서 어느 그리드에 그릴지 결정
+                let targetGridId = (data.attacker === socket.id) ? 'opponent-grid' : 'my-grid';
+                let targetCellIdx = (data.attacker === socket.id) ? data.attackIndex : data.targetIndex;
+                
+                // 해당 칸의 X, Y 좌표를 가져옴
+                const coords = getCellCoords(targetGridId, targetCellIdx);
+                
+                // 9개의 미사일이 한 번에 떨어지면 부자연스러우니 0~600ms 사이의 랜덤 시차를 두고 발사!
+                setTimeout(() => {
+                    triggerBombStrike(coords.x, coords.y);
+                }, Math.random() * 600);
+            }
+
             if (data.attacker === socket.id) {
                 // [내가 공격했을 때] -> 상대방 그리드(opponent-grid) 처리
                 if (!data.blocked) {
