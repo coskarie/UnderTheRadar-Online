@@ -1694,6 +1694,9 @@
         }
 
         socket.on('roomData', data => {
+            // 🚨 [수정됨] 방어 코드! 무조건 제일 먼저 데이터가 있는지 확인해야 에러가 안 터집니다.
+            if (!data) return; 
+
             const me = data.players.find(p => p.id === socket.id);
             const opp = data.players.find(p => p.id !== socket.id);
             const btn = document.getElementById('start-btn');
@@ -1728,13 +1731,12 @@
                 document.getElementById('action-panel').style.display = (gameStatus === 'PLAYING') ? 'flex' : 'none';
                 document.getElementById('unit-inventory').style.display = 'flex';
 
-                // 🚨 [여기에 추가!] 서버와 내 유닛 상태를 완벽 동기화 (자동 부활 반영!)
+                // 🚨 서버와 내 유닛 상태를 완벽 동기화 (자동 부활 반영!)
                 if (gameStatus === 'PLAYING' && me.units) {
                     myUnits = me.units; // 심판이 관리하는 최신 유닛 상태로 덮어쓰기
                     renderMyGrid();     // 1x1이 부활했다면 화면에 즉시 그려줌
                 }
             }
-
             // 👁️ [2] 내가 관전자일 때 (e스포츠 중계 모드)
             else {
                 const p1 = data.players[0]; // 먼저 들어온 사람 (바닥)
@@ -1757,16 +1759,25 @@
                     renderSpectatorView(p1, p2);
                 }
             }
+            
+            // 🚨 상대가 튕기거나 나가서 나 혼자 남았을 때 (대기실 상태) 완벽 초기화
+            if (data.gameState === 'LOBBY' && data.players.length < 2) {
+                // 1. 양쪽 격자판의 모든 칸을 순수한 <div></div> 로 싹 밀어버림 (락스 청소!)
+                document.querySelectorAll('.grid div').forEach(cell => {
+                    cell.className = ''; // bonus-box, my-unit, hit-unit, miss-cell 싹 다 삭제
+                });
+                // 2. 내 유닛 정보 및 빗나간 기록 등 내부 데이터도 완벽 초기화
+                myUnits = [];
+                opponentMisses = [];
+            }
 
             // 🎁 보급 상자 화면 렌더링
             document.querySelectorAll('.bonus-box').forEach(el => el.classList.remove('bonus-box'));
-            if (data.bonusBox !== null && gameStatus !== 'ENDED') {
+            if (data.bonusBox !== null && data.gameState === 'PLAYING') {
                 const isP1 = isPlayer ? (me.id === data.players[0].id) : true;
-                
                 const myGridCells = document.getElementById('my-grid').children;
                 const oppGridCells = document.getElementById('opponent-grid').children;
 
-                // ✅ 내 격자판과 상대방 격자판은 시점이 동일하므로 상자 좌표도 무조건 같아야 함!
                 const boxIdx = isP1 ? data.bonusBox : (9 - Math.floor(data.bonusBox / 14)) * 14 + (data.bonusBox % 14);
 
                 if (myGridCells[boxIdx]) myGridCells[boxIdx].classList.add('bonus-box');
@@ -1779,7 +1790,7 @@
 
                 if (!isPlayer) {
                     // 👁️ [관전자 시점] 현재 누구 턴인지 이름 표시
-                    const turnPlayer = data.players.find(p => p.id === data.turn); // ✅ current 떼고 data.turn으로 수정!
+                    const turnPlayer = data.players.find(p => p.id === data.turn);
                     const turnName = turnPlayer ? turnPlayer.name : "PLAYER";
 
                     btn.innerText = `[ ${turnName} 님의 턴 ]`;
@@ -1789,7 +1800,7 @@
                     btn.style.boxShadow = "0 0 10px rgba(0, 225, 255, 0.3)";
                 } else {
                     // ⚔️ [플레이어 시점] 내 턴 vs 상대 턴
-                    if (data.turn === me.id) { // ✅ current 떼고 data.turn으로 수정!
+                    if (data.turn === me.id) {
                         btn.innerText = "[ MY TURN ]";
                         btn.style.color = "#09ff00"; 
                         btn.style.borderColor = "#2ecc71";
