@@ -128,25 +128,26 @@ io.on('connection', (socket) => {
         }
 
         if (room.gameState === 'MOVING') {
-            // ✅ 버그 수정 핵심 부분
-            // 기존 코드: player.units = units → 서버가 기억하던 피격 기록이 싹 날아감
-            // 수정 코드: 좌표(cells)만 바꾸고, 피격 기록(hitCells/isHit)은 그대로 보존
-            const typePool = {};
-            player.units.forEach(u => {
-                if (!typePool[u.type]) typePool[u.type] = [];
-                typePool[u.type].push(u);
-            });
+            // 🚨 [버그 수정 완료] 위치가 원래대로 돌아가는 현상 원천 차단!
+            // 기존의 참조(typePool) 돌연변이 방식이 메모리 꼬임을 유발하여, 배열을 통째로 교체합니다.
+            
+            const oldUnits = JSON.parse(JSON.stringify(player.units)); // 이전 유닛 상태 안전하게 완벽 복사
+            
+            player.units = units; // 클라이언트가 새로 배치해서 보낸 '새로운 진형'으로 100% 통째로 덮어쓰기!
 
-            units.forEach(newUnit => {
-                const pool = typePool[newUnit.type];
-                if (pool && pool.length > 0) {
-                    pool.shift().cells = newUnit.cells; // 좌표만 덮어쓰기
+            // 새로운 진형의 유닛들에게 과거의 피격 흔적(데미지)을 핀셋으로 복원해줌
+            player.units.forEach(newU => {
+                const oldU = oldUnits.find(u => u.type === newU.type);
+                if (oldU) {
+                    newU.hitCells = oldU.hitCells || [];
+                    newU.isHit = oldU.isHit || false;
+                    newU.destroyedTurn = oldU.destroyedTurn;
                 }
             });
 
-            // 🚨 [CCTV] 기동 후 저격수 좌표 확인용 로그
+            // 🚨 [CCTV] 본대 기동 확정 로그
             const sniper = player.units.find(u => u.type === 'I');
-            console.log(`[기동 확정] ${player.name}의 저격수(I) 갱신된 좌표:`, sniper ? sniper.cells : "없음");
+            console.log(`[본대 기동 확정] ${player.name}의 유닛 진형 업데이트 완료. 저격수(I) 현재 좌표:`, sniper ? sniper.cells : "없음");
 
         } else {
             // PLACING 단계는 처음 배치라 피격 기록이 없으므로 기존대로 전체 교체해도 됨
@@ -174,12 +175,11 @@ io.on('connection', (socket) => {
 
                 // 🚨 게임 시작 시 1프레이즈로 표시!
                 io.to(currentRoom).emit('updatePhrase', 1); 
-                io.to(currentRoom).emit('systemMsg', "전투 시작! 선공을 확인하세요.");
             } else {
                 io.to(currentRoom).emit('gameStart', { turn: room.turn });
                 io.to(currentRoom).emit('systemMsg', "전술 기동 완료! 전투를 재개합니다.");
             }
-            updateRoomInfo(currentRoom);
+            updateRoomInfo(currentRoom); // 🚨 여기서 최종적으로 클라이언트로 새로운 데이터를 발사!
         } else {
             socket.emit('systemMsg', "상대방의 작전 완료를 기다리는 중입니다...");
         }
