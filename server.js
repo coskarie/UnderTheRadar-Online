@@ -101,41 +101,33 @@ io.on('connection', (socket) => {
     // 5. 배치 및 전술 기동 확정 로직
     socket.on('finishPlacing', (units) => {
         const room = rooms[currentRoom];
-        
-        // 1. 방 및 상태 체크
         if (!room || (room.gameState !== 'PLACING' && room.gameState !== 'MOVING')) return;
 
         const player = room.players.find(p => p.id === socket.id);
         if (!player) return;
 
-        // 🚨 [추가] 보급 상자 겹침 체크 (P1/P2 거울 반전 계산 포함)
-        // 플레이어 1(방장)인지 확인하여 좌표 변환 기준을 잡습니다.
         const isPlayer1 = (player.id === room.players[0].id);
 
+        // 🚨 [수정] 보급 상자 겹침 체크 로직 보완
         if (room.bonusBox !== null) {
             const overlapsWithBox = units.some(u => 
                 u.cells.some(c => {
-                    // 내 화면의 좌표 c를 서버의 절대 좌표(P1 기준)로 변환
                     const absCell = isPlayer1 ? c : (139 - c);
                     return absCell === room.bonusBox;
                 })
             );
 
-            if (overlapsWithBox) {
-                // 겹치면 여기서 바로 리턴해서 아래 로직이 실행 안 되게 막습니다.
+            // 배치 단계에서만 엄격하게 막고, 기동 단계에서는 겹침 허용 (이미 상자 위에 있을 수 있으므로)
+            if (room.gameState === 'PLACING' && overlapsWithBox) {
                 return socket.emit('systemMsg', "⚠️ 보급 상자가 있는 칸에는 유닛을 배치할 수 없습니다.");
             }
         }
 
         if (room.gameState === 'MOVING') {
-            // 🚨 [버그 수정 완료] 위치가 원래대로 돌아가는 현상 원천 차단!
-            // 기존의 참조(typePool) 돌연변이 방식이 메모리 꼬임을 유발하여, 배열을 통째로 교체합니다.
-            
-            const oldUnits = JSON.parse(JSON.stringify(player.units)); // 이전 유닛 상태 안전하게 완벽 복사
-            
-            player.units = units; // 클라이언트가 새로 배치해서 보낸 '새로운 진형'으로 100% 통째로 덮어쓰기!
+            // 🚨 유닛 상태 복원 및 덮어쓰기 로직 강화
+            const oldUnits = JSON.parse(JSON.stringify(player.units));
+            player.units = units;
 
-            // 새로운 진형의 유닛들에게 과거의 피격 흔적(데미지)을 핀셋으로 복원해줌
             player.units.forEach(newU => {
                 const oldU = oldUnits.find(u => u.type === newU.type);
                 if (oldU) {
@@ -144,22 +136,14 @@ io.on('connection', (socket) => {
                     newU.destroyedTurn = oldU.destroyedTurn;
                 }
             });
-
-            // 🚨 [CCTV] 본대 기동 확정 로그
-            const sniper = player.units.find(u => u.type === 'I');
-            console.log(`[본대 기동 확정] ${player.name}의 유닛 진형 업데이트 완료. 저격수(I) 현재 좌표:`, sniper ? sniper.cells : "없음");
-
+            console.log(`[CCTV] ${player.name} 본대 기동 확정 완료`);
         } else {
-            // PLACING 단계는 처음 배치라 피격 기록이 없으므로 기존대로 전체 교체해도 됨
             player.units = units;
-
-            // 🚨 [CCTV] 최초 배치 저격수 좌표 확인용 로그
-            const sniper = units.find(u => u.type === 'I');
-            console.log(`[배치 확정] ${player.name}의 저격수(I) 좌표:`, sniper ? sniper.cells : "없음");
         }
 
-        player.placed = true;
+        player.placed = true; // ✅ 확정 플래그 정상 작동 확인
 
+        // 양쪽 모두 확정 시 상태 전환
         if (room.players.length === 2 && room.players.every(p => p.placed)) {
             const prevState = room.gameState;
             room.gameState = 'PLAYING';
@@ -171,17 +155,15 @@ io.on('connection', (socket) => {
                 room.turn = room.players[turnIndex].id;
                 passTurn(room, room.turn);
                 io.to(currentRoom).emit('gameStart', { turn: room.turn });
-                io.to(currentRoom).emit('systemMsg', "전투 시작! 선공을 확인하세요.");
-
-                // 🚨 게임 시작 시 1프레이즈로 표시!
-                io.to(currentRoom).emit('updatePhrase', 1); 
             } else {
+                // 기동 후 전투 재개
                 io.to(currentRoom).emit('gameStart', { turn: room.turn });
                 io.to(currentRoom).emit('systemMsg', "전술 기동 완료! 전투를 재개합니다.");
             }
-            updateRoomInfo(currentRoom); // 🚨 여기서 최종적으로 클라이언트로 새로운 데이터를 발사!
+            updateRoomInfo(currentRoom);
         } else {
             socket.emit('systemMsg', "상대방의 작전 완료를 기다리는 중입니다...");
+            updateRoomInfo(currentRoom); // ✅ 상태 변화(버튼 텍스트 변경 등) 즉시 전송
         }
     });
 
@@ -436,7 +418,8 @@ io.on('connection', (socket) => {
                             
                             if (isOppAlive) {
                                 oppUnit.cells.forEach(c => {
-                                    if (area.includes(c)) {
+                                    const absC = (opponent.id === room.players[0].id) ? c : (139 - c);
+                                    if (area.includes(absC)) {
                                         foundEnemy = true;
                                     }
                                 });
@@ -444,7 +427,15 @@ io.on('connection', (socket) => {
                         });
 
                         // 5. 결과를 L블럭의 주인(클라이언트)에게 발송!
-                        io.to(player.id).emit('autoRadarResult', { centerIdx, area, foundEnemy });
+                        const isP1 = (player.id === room.players[0].id);
+                    const clientCenterIdx = isP1 ? centerIdx : (139 - centerIdx);
+                    const clientArea = isP1 ? area : area.map(c => 139 - c);
+
+                    io.to(player.id).emit('autoRadarResult', { 
+                        centerIdx: clientCenterIdx, 
+                        area: clientArea, 
+                        foundEnemy 
+                    });
                     }
                 });
             }
