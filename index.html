@@ -1767,7 +1767,7 @@
                 const oppGridCells = document.getElementById('opponent-grid').children;
 
                 // ✅ 내 격자판과 상대방 격자판은 시점이 동일하므로 상자 좌표도 무조건 같아야 함!
-                const boxIdx = isP1 ? data.bonusBox : (139 - data.bonusBox);
+                const boxIdx = isP1 ? data.bonusBox : (9 - Math.floor(data.bonusBox / 14)) * 14 + (data.bonusBox % 14);
 
                 if (myGridCells[boxIdx]) myGridCells[boxIdx].classList.add('bonus-box');
                 if (oppGridCells[boxIdx]) oppGridCells[boxIdx].classList.add('bonus-box');
