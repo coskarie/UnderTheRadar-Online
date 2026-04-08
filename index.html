@@ -1890,24 +1890,27 @@
                 // 🛋️ LOBBY (대기실) 상태
                 if (resetBtn) resetBtn.style.display = 'none'; // 대기실에선 무조건 리셋 버튼 숨김
 
-                if (data.players.length === 2 && data.players.every(p => p.isReady)) {
-                    btn.disabled = false;
-                    btn.innerText = "SYSTEM START!"; 
-                    btn.style.background = "rgba(255, 152, 0, 0.15)"; // 어두운 주황 배경
-                    btn.style.color = "#FF9800"; 
-                    btn.style.borderColor = "#FF9800";
-                    btn.style.boxShadow = "0 0 15px rgba(255, 152, 0, 0.4)";
+                // 🚨 [수정 핵심] 관전자 방어막을 제일 겉으로 빼서 무조건 1순위로 통제합니다!
+                if (!isPlayer) {
+                    // 👁️ 대기실 관전자: 플레이어들이 레디를 하든 말든 무조건 클릭 금지 및 대기 표시!
+                    btn.disabled = true;
+                    btn.innerText = "[ SPECTATING STANDBY ]"; 
+                    btn.style.background = "rgba(0, 0, 0, 0.8)"; 
+                    btn.style.color = "#8a9ba8"; 
+                    btn.style.borderColor = "#555";
+                    btn.style.boxShadow = "none";
                 } else {
-                    if (!isPlayer) {
-                        // 👁️ 대기실 관전자
-                        btn.disabled = true;
-                        btn.innerText = "[ SPECTATING STANDBY ]"; 
-                        btn.style.background = "rgba(0, 0, 0, 0.8)"; 
-                        btn.style.color = "#8a9ba8"; 
-                        btn.style.borderColor = "#555";
-                        btn.style.boxShadow = "none";
+                    // ⚔️ 대기실 플레이어 전용 로직 (관전자는 이쪽으로 절대 못 들어옴)
+                    if (data.players.length === 2 && data.players.every(p => p.isReady)) {
+                        // 두 명 모두 레디 완료 시 -> 게임 시작 버튼 활성화
+                        btn.disabled = false;
+                        btn.innerText = "SYSTEM START!"; 
+                        btn.style.background = "rgba(255, 152, 0, 0.15)"; // 어두운 주황 배경
+                        btn.style.color = "#FF9800"; 
+                        btn.style.borderColor = "#FF9800";
+                        btn.style.boxShadow = "0 0 15px rgba(255, 152, 0, 0.4)";
                     } else {
-                        // ⚔️ 대기실 플레이어
+                        // 레디 대기 중일 시 -> 레디/취소 토글 버튼
                         btn.disabled = false;
                         btn.innerText = me.isReady ? "CANCEL READY" : "SYSTEM READY"; 
                         btn.style.background = me.isReady ? "rgba(231, 76, 60, 0.15)" : "rgba(5, 20, 10, 0.9)";
