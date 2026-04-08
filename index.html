@@ -1773,27 +1773,70 @@
                 if (oppGridCells[boxIdx]) oppGridCells[boxIdx].classList.add('bonus-box');
             }
 
-            // 로비 버튼 제어
-            if (data.gameState === 'LOBBY') {
-                btn.disabled = false;
+            // 🚨 게임 상태 및 플레이어/관전자 여부에 따른 메인 버튼 UI 제어
+            if (data.gameState === 'PLAYING') {
+                btn.disabled = true; // 턴 액션은 그리드에서 하므로 메인 버튼은 클릭 방지
+
+                if (!isPlayer) {
+                    // 👁️ [관전자 시점] 현재 누구 턴인지 이름 표시
+                    const turnPlayer = data.players.find(p => p.id === data.currentTurn);
+                    const turnName = turnPlayer ? turnPlayer.name : "PLAYER";
+
+                    btn.innerText = `[ ${turnName} 님의 턴 ]`;
+                    btn.style.color = "#00e1ff"; // 관전자에겐 중립적인 네온 블루
+                    btn.style.borderColor = "#00b8d4";
+                    btn.style.background = "rgba(0, 225, 255, 0.1)";
+                    btn.style.boxShadow = "0 0 10px rgba(0, 225, 255, 0.3)";
+                } else {
+                    // ⚔️ [플레이어 시점] 내 턴 vs 상대 턴
+                    if (data.currentTurn === me.id) {
+                        btn.innerText = "[ MY TURN ]";
+                        btn.style.color = "#09ff00"; // 내 턴일 땐 초록색 네온
+                        btn.style.borderColor = "#2ecc71";
+                        btn.style.background = "rgba(9, 255, 0, 0.15)";
+                        btn.style.boxShadow = "0 0 15px rgba(9, 255, 0, 0.4)";
+                    } else {
+                        btn.innerText = "[ ENEMY TURN ]";
+                        btn.style.color = "#ff3333"; // 상대 턴일 땐 붉은색 경고
+                        btn.style.borderColor = "#cc0000";
+                        btn.style.background = "rgba(204, 0, 0, 0.15)";
+                        btn.style.boxShadow = "none"; // 턴 아닐 땐 빛 끄기
+                    }
+                }
+            } else if (data.gameState === 'ENDED') {
+                // 🛑 게임 종료 상태
+                btn.disabled = true;
+                btn.innerText = "[ COMBAT TERMINATED ]";
+                btn.style.color = "#8a9ba8";
+                btn.style.borderColor = "#555";
+                btn.style.background = "rgba(0, 0, 0, 0.8)";
+                btn.style.boxShadow = "none";
+            } else if (data.gameState === 'LOBBY') {
+                // 🛋️ LOBBY (대기실) 상태
                 if (data.players.length === 2 && data.players.every(p => p.isReady)) {
+                    btn.disabled = false;
                     btn.innerText = "SYSTEM START!"; 
                     btn.style.background = "rgba(255, 152, 0, 0.15)"; // 어두운 주황 배경
                     btn.style.color = "#FF9800"; 
                     btn.style.borderColor = "#FF9800";
+                    btn.style.boxShadow = "0 0 15px rgba(255, 152, 0, 0.4)";
                 } else {
-                    if (isPlayer) {
+                    if (!isPlayer) {
+                        // 👁️ 대기실 관전자
+                        btn.disabled = true;
+                        btn.innerText = "[ SPECTATING STANDBY ]"; 
+                        btn.style.background = "rgba(0, 0, 0, 0.8)"; 
+                        btn.style.color = "#8a9ba8"; 
+                        btn.style.borderColor = "#555";
+                        btn.style.boxShadow = "none";
+                    } else {
+                        // ⚔️ 대기실 플레이어
+                        btn.disabled = false;
                         btn.innerText = me.isReady ? "CANCEL READY" : "SYSTEM READY"; 
-                        // 🚨 레디 상태면 어두운 빨강, 아니면 어두운 다크그린
                         btn.style.background = me.isReady ? "rgba(231, 76, 60, 0.15)" : "rgba(5, 20, 10, 0.9)";
                         btn.style.color = me.isReady ? "#e74c3c" : "#09ff00";
                         btn.style.borderColor = me.isReady ? "#e74c3c" : "#2ecc71";
-                    } else {
-                        btn.innerText = "SPECTATING..."; 
-                        btn.style.background = "rgba(0, 0, 0, 0.8)"; 
-                        btn.style.color = "#555"; 
-                        btn.style.borderColor = "#333";
-                        btn.disabled = true;
+                        btn.style.boxShadow = me.isReady ? "0 0 10px rgba(231, 76, 60, 0.4)" : "0 0 15px rgba(9, 255, 0, 0.4)";
                     }
                 }
             }
