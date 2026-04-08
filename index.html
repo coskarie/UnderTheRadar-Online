@@ -1779,28 +1779,28 @@
 
                 if (!isPlayer) {
                     // 👁️ [관전자 시점] 현재 누구 턴인지 이름 표시
-                    const turnPlayer = data.players.find(p => p.id === data.currentTurn);
+                    const turnPlayer = data.players.find(p => p.id === data.turn); // ✅ current 떼고 data.turn으로 수정!
                     const turnName = turnPlayer ? turnPlayer.name : "PLAYER";
 
                     btn.innerText = `[ ${turnName} 님의 턴 ]`;
-                    btn.style.color = "#00e1ff"; // 관전자에겐 중립적인 네온 블루
+                    btn.style.color = "#00e1ff"; 
                     btn.style.borderColor = "#00b8d4";
                     btn.style.background = "rgba(0, 225, 255, 0.1)";
                     btn.style.boxShadow = "0 0 10px rgba(0, 225, 255, 0.3)";
                 } else {
                     // ⚔️ [플레이어 시점] 내 턴 vs 상대 턴
-                    if (data.currentTurn === me.id) {
+                    if (data.turn === me.id) { // ✅ current 떼고 data.turn으로 수정!
                         btn.innerText = "[ MY TURN ]";
-                        btn.style.color = "#09ff00"; // 내 턴일 땐 초록색 네온
+                        btn.style.color = "#09ff00"; 
                         btn.style.borderColor = "#2ecc71";
                         btn.style.background = "rgba(9, 255, 0, 0.15)";
                         btn.style.boxShadow = "0 0 15px rgba(9, 255, 0, 0.4)";
                     } else {
                         btn.innerText = "[ ENEMY TURN ]";
-                        btn.style.color = "#ff3333"; // 상대 턴일 땐 붉은색 경고
+                        btn.style.color = "#ff3333"; 
                         btn.style.borderColor = "#cc0000";
                         btn.style.background = "rgba(204, 0, 0, 0.15)";
-                        btn.style.boxShadow = "none"; // 턴 아닐 땐 빛 끄기
+                        btn.style.boxShadow = "none"; 
                     }
                 }
             } else if (data.gameState === 'ENDED') {
