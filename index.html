@@ -269,7 +269,7 @@
             /* (width, 위치 등 기존 레이아웃 설정이 있다면 여기에 합쳐주세요) */
         }
         .name-label { font-size: 1.1em; font-weight: bold; display: flex; align-items: center; gap: 8px; margin: 2px 0; color: rgb(255, 255, 255); margin-bottom: 1%; margin-left: 15px;}
-        .v-mark { color: #4CAF50; font-weight: 900; display: none; }
+        .v-mark { color: #4CAF50; font-weight: 900; display: none; align-self: center; line-height: 1; white-space: nowrap; margin-top: -2px; }
 
         /* 1. 🧱 공통 뼈대 (크기, 격자 칸수, 테두리 등은 그대로 공유) */
         .grid { 
@@ -965,7 +965,8 @@
     <script>
         const socket = (typeof io !== 'undefined') ? io() : { emit: ()=>{}, on: ()=>{} };
         let myName = "", myRoom = "", myUnits = [], isMyTurn = false;
-        
+        let opponentMisses = [];
+
         let gameStatus = "LOBBY"; 
         let selectedUnitType = null; 
         let isPlayer = false; 
@@ -1511,6 +1512,11 @@
                     if (c === selected1x1Idx) cells[c].classList.add('moving-1x1');
                 });
             });
+
+            opponentMisses.forEach(idx => {
+                if (cells[idx]) cells[idx].classList.add('miss-cell');
+            });
+
             if (gameStatus === 'PLAYING' && actionMode === 'MOVE' && selected1x1Idx !== -1) {
                 const pX = selected1x1Idx % 14;
                 const pY = Math.floor(selected1x1Idx / 14);
@@ -1715,11 +1721,11 @@
             if (isPlayer) {
                 myRole.innerText = "● COMMANDER:";
                 myNameDisplay.innerText = me.name;
-                myV.style.display = me.isReady ? 'inline' : 'none';
+                myV.style.display = me.isReady ? 'inline-block' : 'none';
 
                 oppRole.innerText = "● HOSTILE:";
                 oppNameDisplay.innerText = opp ? opp.name : "대기 중";
-                oppV.style.display = (opp && opp.isReady) ? 'inline' : 'none';
+                oppV.style.display = (opp && opp.isReady) ? 'inline-block' : 'none';
                 
                 document.getElementById('action-panel').style.display = (gameStatus === 'PLAYING') ? 'flex' : 'none';
                 document.getElementById('unit-inventory').style.display = 'flex';
@@ -1962,6 +1968,12 @@
                 // [상대가 나를 공격했을 때] -> 내 그리드(my-grid) 처리
                 if (!data.blocked) {
                     document.getElementById('my-grid').children[data.targetIndex].classList.add(data.hit ? 'hit-unit' : 'miss-cell');
+                    
+                    // 🚨 [추가] 빗맞췄다면(hit이 false면) 메모장에 그 좌표를 저장!
+                    if (!data.hit && !opponentMisses.includes(data.targetIndex)) {
+                        opponentMisses.push(data.targetIndex);
+                    }
+
                     // 💥 내 유닛이 명중(hit) 당했다면 내 그리드 흔들기!
                     if (data.hit) triggerShake('my-grid');
                 } else {
@@ -2107,6 +2119,8 @@
             selectedUnitType = null;
             movingOriginalState = null;
             inventory = { 'ㄷ':1, 'L':1, 'T':1, 'ㅗ':1, 'I':1, '1x1':1, '1x2':1, '📦':1, '💣':1 };
+
+            opponentMisses = []; // 🚨 [추가] 새 게임이 시작되면 빗나간 기록도 초기화!
             
             initGrids(); 
             renderInventory(); 
