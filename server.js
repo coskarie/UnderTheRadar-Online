@@ -400,6 +400,54 @@ io.on('connection', (socket) => {
                 io.to(currentRoom).emit('startMoving');
                 io.to(currentRoom).emit('systemMsg', "⚠️ 5프레이즈(10턴) 도달! 본대 유닛을 재배치하세요.");
             }
+
+            if (room.phraseCount > 0 && room.phraseCount % 2 === 0 && currentPhrase % 3 === 0) {
+                room.players.forEach((player, pIndex) => {
+                    const opponent = room.players[pIndex === 0 ? 1 : 0];
+
+                    // 1. 내 L블럭이 존재하는지, 파괴되지 않았는지 확인
+                    const radarUnit = player.units.find(u => u.type === 'L');
+                    const isRadarAlive = radarUnit && radarUnit.cells.length > (radarUnit.hitCells ? radarUnit.hitCells.length : 0);
+
+                    if (isRadarAlive) {
+                        // 2. 140칸 중 랜덤한 센터 포인트 잡기
+                        const centerIdx = Math.floor(Math.random() * 140);
+                        const area = [];
+                        const cx = centerIdx % 14;
+                        const cy = Math.floor(centerIdx / 14);
+
+                        // 3. 센터 포인트 기준 3x3 영역 계산
+                        for (let dy = -1; dy <= 1; dy++) {
+                            for (let dx = -1; dx <= 1; dx++) {
+                                const nx = cx + dx;
+                                const ny = cy + dy;
+                                // 14 x 10 격자 밖으로 삐져나가는거 방지
+                                if (nx >= 0 && nx < 14 && ny >= 0 && ny < 10) {
+                                    area.push(ny * 14 + nx);
+                                }
+                            }
+                        }
+
+                        // 4. 이 3x3 구역 안에 적 유닛이 있는지 스캔!
+                        let foundEnemy = false;
+                        opponent.units.forEach(oppUnit => {
+                            // 파괴된 잔해는 무시하고, 살아있는 함선만 감지하도록
+                            const isOppAlive = oppUnit.cells.length > (oppUnit.hitCells ? oppUnit.hitCells.length : 0);
+                            
+                            if (isOppAlive) {
+                                oppUnit.cells.forEach(c => {
+                                    if (area.includes(c)) {
+                                        foundEnemy = true;
+                                    }
+                                });
+                            }
+                        });
+
+                        // 5. 결과를 L블럭의 주인(클라이언트)에게 발송!
+                        io.to(player.id).emit('autoRadarResult', { centerIdx, area, foundEnemy });
+                    }
+                });
+            }
         }
         updateRoomInfo(currentRoom);
     }); // socket.on('attack') 끝
