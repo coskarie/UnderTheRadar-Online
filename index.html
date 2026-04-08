@@ -802,9 +802,70 @@
         @keyframes shake-screen { 0%, 100% { transform: translate(0, 0); } 25% { transform: translate(-5px, 5px); } 50% { transform: translate(5px, -5px); } 75% { transform: translate(-5px, -5px); } }
         .shake-active { animation: shake-screen 0.1s linear infinite; }
 
+        /* =========================================
+           🚨 자동 레이더 경고 (L블럭) 이펙트 CSS
+           ========================================= */
+        #auto-radar-overlay {
+            position: fixed;
+            inset: 0;
+            z-index: 9999;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background: rgba(255, 0, 0, 0.15); /* 피격당한 듯한 붉은 틴트 */
+            pointer-events: none;
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.3s ease-out, visibility 0.3s;
+        }
+
+        #auto-radar-overlay.active {
+            opacity: 1;
+            visibility: visible;
+        }
+
+        .radar-alert-box {
+            border: 2px solid #ff0000;
+            background: rgba(10, 0, 0, 0.95);
+            box-shadow: 0 0 40px rgba(255, 0, 0, 0.6), inset 0 0 20px rgba(255, 0, 0, 0.4);
+            padding: 30px 60px;
+            text-align: center;
+            transform: scale(0.5);
+            transition: transform 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            border-radius: 4px;
+        }
+
+        #auto-radar-overlay.active .radar-alert-box {
+            transform: scale(1);
+        }
+
+        .alert-title {
+            color: #ff3333;
+            font-family: 'Rajdhani', sans-serif;
+            letter-spacing: 8px;
+            font-size: 2.5rem;
+            font-weight: 900;
+            margin: 0 0 10px 0;
+            text-shadow: 0 0 15px #ff0000;
+        }
+
+        .alert-desc {
+            color: #ffffff;
+            font-family: 'Noto Sans KR', sans-serif;
+            font-size: 1.2rem;
+            margin: 0;
+            letter-spacing: 2px;
+        }
+        
     </style>
 </head>
 <body>
+    <div id="auto-radar-overlay">
+        <div class="radar-alert-box">
+            <h2 class="alert-title">ENEMY DETECTED</h2>
+            <p class="alert-desc">적군의 함선이 포착되었습니다!</p>
+        </div>
+    </div>
     <div id="login-screen">
         <div class="login-bg-layer"></div>
 
@@ -1601,6 +1662,37 @@
                 }
             }
         }
+
+        // 🚨 [신규] L블럭 3프레이즈 자동 레이더 결과 수신
+        socket.on('autoRadarResult', data => {
+            if (!isPlayer) return; // 관전자는 일단 패스
+
+            const { centerIdx, area, foundEnemy } = data;
+            const oppCells = document.getElementById('opponent-grid').children;
+
+            // 1. 3x3 영역에 붉은색 레이더 핑 이펙트 재생
+            area.forEach(idx => {
+                if(oppCells[idx]) {
+                    oppCells[idx].classList.add('radar-flash');
+                    setTimeout(() => oppCells[idx].classList.remove('radar-flash'), 1500);
+                }
+            });
+
+            // 2. 적군 발견 시 화면 중앙에 거대한 텍스트 박스 출력!
+            if (foundEnemy) {
+                addGameLog("🚨 [레이더 경보] 광역 탐색 중 적의 금속 반응을 감지했습니다!");
+                
+                const overlay = document.getElementById('auto-radar-overlay');
+                overlay.classList.add('active');
+                
+                // 3초 후 경고창 닫기
+                setTimeout(() => {
+                    overlay.classList.remove('active');
+                }, 3000);
+            } else {
+                addGameLog("📡 [정기 스캔] 탐색 구역 내 특이사항 없습니다.");
+            }
+        });
 
         function showGhost(idx) {
             clearGhost();
