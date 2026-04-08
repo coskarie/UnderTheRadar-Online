@@ -1762,11 +1762,11 @@
                 const myGridCells = document.getElementById('my-grid').children;
                 const oppGridCells = document.getElementById('opponent-grid').children;
 
-                const myBoxIdx = isP1 ? data.bonusBox : (139 - data.bonusBox);
-                const oppBoxIdx = isP1 ? (139 - data.bonusBox) : data.bonusBox;
+                // ✅ 내 격자판과 상대방 격자판은 시점이 동일하므로 상자 좌표도 무조건 같아야 함!
+                const boxIdx = isP1 ? data.bonusBox : (139 - data.bonusBox);
 
-                if (myGridCells[myBoxIdx]) myGridCells[myBoxIdx].classList.add('bonus-box');
-                if (oppGridCells[oppBoxIdx]) oppGridCells[oppBoxIdx].classList.add('bonus-box');
+                if (myGridCells[boxIdx]) myGridCells[boxIdx].classList.add('bonus-box');
+                if (oppGridCells[boxIdx]) oppGridCells[boxIdx].classList.add('bonus-box');
             }
 
             // 로비 버튼 제어
