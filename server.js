@@ -323,6 +323,7 @@ io.on('connection', (socket) => {
             if (allDestroyed) {
                 io.to(currentRoom).emit('attackResult', { attacker: socket.id, attackIndex, targetIndex, hit: true });
                 room.gameState = 'ENDED';
+                room.bonusBox = null; // 🚨 [추가] 게임 끝나면 상자 소멸!
                 io.to(currentRoom).emit('gameOver', { winner: userName });
                 return; // 게임 끝났으니 아래 로직 무시
             } 
