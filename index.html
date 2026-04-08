@@ -1821,11 +1821,14 @@
             }
 
             // 🚨 게임 상태 및 플레이어/관전자 여부에 따른 메인 버튼 UI 제어
+            const resetBtn = document.getElementById('reset-btn'); // 🧹 리셋 버튼 요소 가져오기
+
             if (data.gameState === 'PLAYING') {
                 btn.disabled = true; // 턴 액션은 그리드에서 하므로 메인 버튼은 클릭 방지
+                if (resetBtn) resetBtn.style.display = 'none'; // 플레이 중엔 리셋 버튼 무조건 숨김
 
                 if (!isPlayer) {
-                    // 👁️ [관전자 시점] 현재 누구 턴인지 이름 표시
+                    // 👁️ [관전자 시점]
                     const turnPlayer = data.players.find(p => p.id === data.turn);
                     const turnName = turnPlayer ? turnPlayer.name : "PLAYER";
 
@@ -1835,7 +1838,7 @@
                     btn.style.background = "rgba(0, 225, 255, 0.1)";
                     btn.style.boxShadow = "0 0 10px rgba(0, 225, 255, 0.3)";
                 } else {
-                    // ⚔️ [플레이어 시점] 내 턴 vs 상대 턴
+                    // ⚔️ [플레이어 시점]
                     if (data.turn === me.id) {
                         btn.innerText = "[ MY TURN ]";
                         btn.style.color = "#09ff00"; 
@@ -1853,13 +1856,40 @@
             } else if (data.gameState === 'ENDED') {
                 // 🛑 게임 종료 상태
                 btn.disabled = true;
+                if (resetBtn) resetBtn.style.display = 'none';
                 btn.innerText = "[ COMBAT TERMINATED ]";
                 btn.style.color = "#8a9ba8";
                 btn.style.borderColor = "#555";
                 btn.style.background = "rgba(0, 0, 0, 0.8)";
                 btn.style.boxShadow = "none";
+
+            // 🚨🚨 [신규 핵심 추가] 배치 및 기동 상태일 때 관전자 완벽 통제!
+            } else if (data.gameState === 'PLACING' || data.gameState === 'MOVING') {
+                if (!isPlayer) {
+                    // 👁️ 관전자: 버튼 비활성화, 리셋 버튼 삭제, 배치 중 텍스트 고정
+                    btn.disabled = true;
+                    btn.innerText = data.gameState === 'PLACING' ? "[ 유닛 배치 중 . . . ]" : "[ 전술 기동 중 . . . ]";
+                    btn.style.background = "rgba(0, 0, 0, 0.8)";
+                    btn.style.color = "#8a9ba8";
+                    btn.style.borderColor = "#555";
+                    btn.style.boxShadow = "none";
+                    if (resetBtn) resetBtn.style.display = 'none'; // 절대 못 누르게 숨김!
+                } else {
+                    // ⚔️ 플레이어: 본인이 '확정'을 눌렀는지 여부에 따라 UI 변경
+                    const isPlaced = me && me.placed; 
+                    btn.disabled = isPlaced; // 확정 눌렀으면 더 이상 못 누르게 잠금
+                    btn.innerText = isPlaced ? "[ 작전 대기 중 ]" : (data.gameState === 'PLACING' ? "배치 확정" : "기동 확정");
+                    btn.style.background = isPlaced ? "rgba(0, 0, 0, 0.8)" : "rgba(5, 20, 10, 0.9)";
+                    btn.style.color = isPlaced ? "#8a9ba8" : "#09ff00";
+                    btn.style.borderColor = isPlaced ? "#555" : "#2ecc71";
+                    btn.style.boxShadow = isPlaced ? "none" : "0 0 15px rgba(9, 255, 0, 0.4)";
+                    if (resetBtn) resetBtn.style.display = isPlaced ? 'none' : 'block'; // 확정하면 리셋 버튼도 숨김
+                }
+
             } else if (data.gameState === 'LOBBY') {
                 // 🛋️ LOBBY (대기실) 상태
+                if (resetBtn) resetBtn.style.display = 'none'; // 대기실에선 무조건 리셋 버튼 숨김
+
                 if (data.players.length === 2 && data.players.every(p => p.isReady)) {
                     btn.disabled = false;
                     btn.innerText = "SYSTEM START!"; 
@@ -1935,45 +1965,35 @@
         function changeRole(r) { socket.emit('changeRole', r); }
 
         socket.on('startPlacing', () => {
-            isFirstGameStart = true; // 최초 시작 플래그 ON!
-            gameStatus = "PLACING";
+            gameStatus = 'PLACING';
+            selectedUnitType = null;
             movingOriginalState = null;
-            if (myUnits.length === 0) {
-                inventory = { 'ㄷ':1, 'L':1, 'T':1, 'ㅗ':1, 'I':1, '1x1':1, '1x2':1, '📦':1, '💣':1 }; // 상자 포함 리셋
-                selectedUnitType = Object.keys(inventory)[0];
+            
+            // 🚨 [방어막] 플레이어만 인벤토리와 리셋 버튼을 볼 수 있게 통제!
+            if (isPlayer) {
+                document.getElementById('unit-inventory').style.display = 'flex';
+                document.getElementById('reset-btn').style.display = 'block';
+                const btn = document.getElementById('start-btn');
+                btn.innerText = "배치 확정";
+                btn.disabled = false;
             }
-            document.getElementById('fuel-display').style.display = 'none';
-            document.getElementById('action-panel').style.display = 'none';
-            document.getElementById('unit-inventory').style.display = 'flex';
-            renderInventory(); renderMyGrid();
-            const btn = document.getElementById('start-btn');
-            btn.innerText = "배치 확정"; 
-            btn.style.background = "rgba(5, 20, 10, 0.9)"; // 🚨 어두운 벙커색
-            btn.style.color = "#09ff00";
-            btn.style.borderColor = "#2ecc71";
-            btn.disabled = false;
-            document.getElementById('reset-btn').style.display = 'block';
+            renderMyGrid();
         });
 
         socket.on('startMoving', () => {
-            gameStatus = "MOVING"; 
-            movingOriginalState = null; 
+            gameStatus = 'MOVING';
             selectedUnitType = null;
-            myUnits.forEach(u => u.isMoved = false); 
+            movingOriginalState = null;
             
-            const btn = document.getElementById('start-btn');
-            btn.innerText = "본대 기동 확정"; 
-            btn.style.background = "rgba(155, 89, 182, 0.15)";
-            btn.style.color = "#9b59b6";
-            btn.style.borderColor = "#9b59b6";
-            btn.disabled = false;
-
-            // 🚨 기동을 위해 인벤토리 다시 열어주고 액션 패널 끄기
-            document.getElementById('action-panel').style.display = 'none';
-            document.getElementById('unit-inventory').style.display = 'flex';
-            renderInventory(); // 인벤토리 갱신
-
-            addGameLog("[시스템] 본대 전술 기동 단계입니다. 1개의 유닛만 재배치할 수 있습니다. (1x1 제외)");
+            // 🚨 [방어막] 플레이어만 통제!
+            if (isPlayer) {
+                document.getElementById('unit-inventory').style.display = 'none'; // 이동할 땐 인벤토리 안 씀
+                document.getElementById('reset-btn').style.display = 'block'; // 리셋 버튼은 살려줌
+                const btn = document.getElementById('start-btn');
+                btn.innerText = "기동 확정";
+                btn.disabled = false;
+            }
+            renderMyGrid();
         });
 
         socket.on('gameStart', data => {
