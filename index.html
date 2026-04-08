@@ -1061,8 +1061,39 @@
                 mCell.onclick = function() { 
                     if(gameStatus === 'PLAYING' && isMyTurn) {
                         if (actionMode === 'MOVE') {
-                            handleMove1x1Click(i);
-                            return;
+                            // 🚨 5프레이즈 본대 기동 턴인지 확인
+                            const isFleetManeuver = (currentPhrase > 0 && currentPhrase % 5 === 0);
+
+                            if (selected1x1Idx === -1) {
+                                // 1. 내가 클릭한 칸에 있는 유닛 찾기
+                                const clickedUnit = myUnits.find(u => u.cells.includes(i));
+                                if (!clickedUnit) return; // 빈칸 클릭 무시
+
+                                if (isFleetManeuver) {
+                                    // 🚢 본대 기동: 상자/지뢰 빼고 모두 선택 가능!
+                                    if (clickedUnit.type === '📦' || clickedUnit.type === '💣') {
+                                        addGameLog("❌ 보급 상자나 지뢰는 이동할 수 없습니다.");
+                                        return;
+                                    }
+                                    selected1x1Idx = i; // 현재 클릭한 위치를 기준점으로 저장
+                                    renderMyGrid(); 
+                                } else {
+                                    // 🚀 일반 기동: 1x1 기동함선만 선택 가능
+                                    if (clickedUnit.type !== '1x1') {
+                                        addGameLog("❌ 일반 기동 턴입니다. 1x1 기동함선만 선택 가능합니다.");
+                                        return;
+                                    }
+                                    selected1x1Idx = i;
+                                    renderMyGrid();
+                                }
+                                return;
+                            } else {
+                                // 2. 이동 목적지 클릭 완료 -> 서버로 이동 명령 발사!
+                                socket.emit('moveUnit', { oldIdx: selected1x1Idx, newIdx: i });
+                                selected1x1Idx = -1; // 선택 해제
+                                renderMyGrid();
+                                return;
+                            }
                         }
                     } else {
                         placeOrPickUnit(i); 
@@ -1693,9 +1724,14 @@
             }
         }
 
+        let currentPhrase = 0; // 🚨 [신규 추가] 현재 프레이즈(턴)을 기억할 변수
+
         socket.on('roomData', data => {
-            // 🚨 [수정됨] 방어 코드! 무조건 제일 먼저 데이터가 있는지 확인해야 에러가 안 터집니다.
             if (!data) return; 
+
+            if (data.phraseCount !== undefined) {
+                currentPhrase = data.phraseCount;
+            }
 
             const me = data.players.find(p => p.id === socket.id);
             const opp = data.players.find(p => p.id !== socket.id);
@@ -2214,9 +2250,13 @@
         });
 
         socket.on('syncMovedUnit', data => {
-            if (!isPlayer) return; // 관전자는 굳이 이동된 유닛의 위치를 동기화할 필요가 없으므로 바로 리턴
-            let unit = myUnits.find(u => u.type === '1x1' && u.cells.includes(data.oldIdx));
-            if (unit) unit.cells = [data.newIdx];
+            if (!isPlayer) return; 
+            
+            let unit = myUnits.find(u => u.cells.includes(data.oldIdx));
+            
+            if (unit && data.cells) {
+                unit.cells = data.cells; 
+            }
             renderMyGrid();
         });
         
