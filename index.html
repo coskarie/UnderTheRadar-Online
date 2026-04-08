@@ -2045,11 +2045,23 @@
             isMyTurn = (socket.id === turnId);
             const btn = document.getElementById('start-btn');
             
-            // 1. 메인 버튼(준비/턴 표시) 상태 변경
-            btn.innerText = isMyTurn ? "🔥 나의 턴" : "⏳ 상대 턴";
-            btn.style.background = isMyTurn ? "rgba(231, 76, 60, 0.15)" : "rgba(0, 0, 0, 0.8)"; // 🚨 어두운 붉은색 or 까만색
-            btn.style.color = isMyTurn ? "#e74c3c" : "#888";
-            btn.style.borderColor = isMyTurn ? "#e74c3c" : "#444";
+            // 1. 메인 버튼(준비/턴 표시) 상태 변경 
+            // 🚨 [수정] 관전자는 건드리지 않고, 플레이어일 때만 네온사인 텍스트로 변경!
+            if (isPlayer) {
+                if (isMyTurn) {
+                    btn.innerText = "[ MY TURN ]";
+                    btn.style.color = "#09ff00"; // 초록색 네온
+                    btn.style.borderColor = "#2ecc71";
+                    btn.style.background = "rgba(9, 255, 0, 0.15)";
+                    btn.style.boxShadow = "0 0 15px rgba(9, 255, 0, 0.4)";
+                } else {
+                    btn.innerText = "[ ENEMY TURN ]";
+                    btn.style.color = "#ff3333"; // 붉은색 경고
+                    btn.style.borderColor = "#cc0000";
+                    btn.style.background = "rgba(204, 0, 0, 0.15)";
+                    btn.style.boxShadow = "none";
+                }
+            }
 
             // 2. 🎯 액션 버튼(타격, 저격, 기동) 활성화/비활성화 제어
             const actionBtns = document.querySelectorAll('.action-btn');
