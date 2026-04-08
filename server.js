@@ -364,11 +364,11 @@ io.on('connection', (socket) => {
                     // 상대방(opponent)이 나를 때린 것처럼 위장해서 신호를 쏘면 화면 동기화 완벽 해결!
                     io.to(currentRoom).emit('attackResult', {
                         attacker: opponent.id, 
-                        attackIndex: 139 - expIdx, // 거울 반전 역계산
+                        attackIndex: (9 - Math.floor(expIdx / 14)) * 14 + (expIdx % 14), 
                         targetIndex: expIdx,
                         hit: isHit,
                         blocked: false,
-                        isBomb: expIdx === targetIndex // ✨ 정중앙 1칸에만 미사일 발사 신호!
+                        isBomb: expIdx === targetIndex 
                     });
                 });
             }
