@@ -1762,8 +1762,6 @@
                 const hasBonus = cells[i].classList.contains('bonus-box');
                 cells[i].className = hasBonus ? 'bonus-box' : '';
                 cells[i].style.opacity = "1";
-                // 기존에 상자 이모티콘이 남을 수 있으니 빈칸일 땐 텍스트 지워주기 (안전장치)
-                if (!hasBonus) cells[i].innerText = ''; 
             }
             
             // 확정 버튼을 눌러서 movingOriginalState가 null이 되면, 이 조건문을 알아서 건너뛰면서 흰색 껍데기가 싹 사라집니다!
@@ -1782,7 +1780,6 @@
                     // 🚨 강철 상자(📦)일 경우 갈색 클래스 덮어씌우기
                     if (u.type === '📦') {
                         cells[c].classList.add('box-unit'); 
-                        cells[c].innerText = '📦'; // 본대 상자 이모티콘
                     } else if (u.type === '💣') {
                         cells[c].classList.add('bomb-unit'); // 🚨 폭탄 전용 클래스 부착
                     }
@@ -1822,7 +1819,6 @@
                 const cell = cells[boxIdx]; 
                 if (cell) {
                     cell.classList.add('bonus-box');
-                    cell.innerText = '📦';
                 }
             }
         }
