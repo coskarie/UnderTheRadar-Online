@@ -1150,7 +1150,7 @@
                                 return;
                             } else {
                                 // 2. 이동 목적지 클릭 완료 -> 서버로 이동 명령 발사!
-                                socket.emit('move1x1', { oldIdx: selected1x1Idx, newIdx: i });
+                                socket.emit('move1x1', { from: selected1x1Idx, to: i });
                                 selected1x1Idx = -1; // 선택 해제
                                 renderMyGrid();
                                 return;
