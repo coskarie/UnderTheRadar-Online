@@ -291,10 +291,10 @@ io.on('connection', (socket) => {
             // 🛡️ 방패에 막혔을 때
             socket.emit('systemMsg', "🛡️ 상대의 T블럭 방패에 막혔습니다!");
             if (type === 'SNIPE') {
-                io.to(currentRoom).emit('attackResult', { attacker: socket.id, attackIndex, targetIndex, hit: false, blocked: true, nextTurn: socket.id });
+                io.to(currentRoom).emit('attackResult', { attacker: socket.id, attackIndex, targetIndex, hit: false, blocked: true, isShieldBlocked: true, nextTurn: socket.id });
             } else {
                 room.phraseCount++;
-                io.to(currentRoom).emit('attackResult', { attacker: socket.id, attackIndex, targetIndex, hit: false, blocked: true, nextTurn: opponent.id });
+                io.to(currentRoom).emit('attackResult', { attacker: socket.id, attackIndex, targetIndex, hit: false, blocked: true, isShieldBlocked: true, nextTurn: opponent.id });
                 passTurn(room, opponent.id);
             }
         } 
