@@ -1792,7 +1792,7 @@
                 socket.emit('startGame');
             } else if (txt === "준비하기" || txt === "준비 취소" || txt === "SYSTEM READY" || txt === "CANCEL READY") {
                 socket.emit('toggleReady');
-            } else if (txt === "배치 확정" || txt === "본대 기동 확정") {
+            } else if (txt === "배치 확정" || txt === "기동 확정" || txt === "본대 기동 확정") { // ✅ "기동 확정" 추가!
                 if (gameStatus === 'PLACING' && Object.values(inventory).some(v => v > 0)) {
                     return alert("모든 유닛을 배치해야 합니다!\n남은 유닛: " +
                         Object.entries(inventory).filter(([,v])=>v>0).map(([k,v])=>`${k}(${v}개)`).join(', '));
