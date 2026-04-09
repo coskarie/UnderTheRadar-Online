@@ -383,7 +383,10 @@ io.on('connection', (socket) => {
                 io.to(currentRoom).emit('systemMsg', "⚠️ 5프레이즈(10턴) 도달! 본대 유닛을 재배치하세요.");
             }
 
-            if (room.phraseCount > 0 && room.phraseCount % 2 === 0 && currentPhrase % 3 === 0) {
+            // ====================================================================
+            // 🚨 [신규 추가] L블럭(레이더) 자동 탐색 시스템 (10, 20, 30... 프레이즈마다 1번씩 발동)
+            // ====================================================================
+            if (room.phraseCount > 0 && room.phraseCount % 2 === 0 && currentPhrase % 10 === 0) {
                 room.players.forEach((player, pIndex) => {
                     const opponent = room.players[pIndex === 0 ? 1 : 0];
 
@@ -418,8 +421,9 @@ io.on('connection', (socket) => {
                             
                             if (isOppAlive) {
                                 oppUnit.cells.forEach(c => {
-                                    const absC = (opponent.id === room.players[0].id) ? c : (139 - c);
-                                    if (area.includes(absC)) {
+                                    // 🚨 핵심 버그 수정 완료 (거울 반전 동기화)
+                                    // 내 시점의 레이더망(area)과 상대방 시점의 유닛 좌표(c)를 매칭하려면 무조건 139 - c 로 뒤집어야 합니다!
+                                    if (area.includes(139 - c)) {
                                         foundEnemy = true;
                                     }
                                 });
