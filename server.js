@@ -660,6 +660,7 @@ io.on('connection', (socket) => {
                         room.boxTurnCount = 0;     // 🚨 상자가 생성되었으므로 타이머를 0으로 리셋 후 정지!
                         
                         io.to(Object.keys(room.spectators).concat(room.players.map(p=>p.id))).emit('systemMsg', "🎁 전장에 보급 상자가 투하되었습니다! (선점하세요!)");
+                        updateRoomInfo(currentRoom); // 🚨 [추가] 상자가 맵에 떨어지자마자 클라이언트에 좌표 발송!
                         break;
                     }
                 }
