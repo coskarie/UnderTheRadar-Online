@@ -2056,6 +2056,7 @@
 
         let currentPhrase = 0; // 🚨 [신규 추가] 현재 프레이즈(턴)을 기억할 변수
         let globalBonusBox = null;
+        let isP1 = true;
 
         socket.on('roomData', data => {
             if (!data) return; 
@@ -2143,14 +2144,24 @@
             // 🎁 보급 상자 화면 렌더링
             document.querySelectorAll('.bonus-box').forEach(el => el.classList.remove('bonus-box'));
             if (data.bonusBox !== null && data.gameState === 'PLAYING') {
-                const isP1 = isPlayer ? (me.id === data.players[0].id) : true;
+                // 🚨 핵심 수정: 앞에 'const'를 지워서 방금 만든 전역 변수 isP1에 값을 저장합니다!
+                isP1 = isPlayer ? (me.id === data.players[0].id) : true; 
+                
                 const myGridCells = document.getElementById('my-grid').children;
                 const oppGridCells = document.getElementById('opponent-grid').children;
 
-                const boxIdx = isP1 ? data.bonusBox : (139 - data.bonusBox);
+                // 🚨 내 화면의 상자 위치와 상대방 화면(거울 반전)의 상자 위치를 정확히 분리!
+                const myBoxIdx = isP1 ? data.bonusBox : (139 - data.bonusBox);
+                const oppBoxIdx = isP1 ? (139 - data.bonusBox) : data.bonusBox; 
 
-                if (myGridCells[boxIdx]) myGridCells[boxIdx].classList.add('bonus-box');
-                if (oppGridCells[boxIdx]) oppGridCells[boxIdx].classList.add('bonus-box');
+                if (myGridCells[myBoxIdx]) {
+                    myGridCells[myBoxIdx].classList.add('bonus-box');
+                    myGridCells[myBoxIdx].innerText = '📦';
+                }
+                if (oppGridCells[oppBoxIdx]) {
+                    oppGridCells[oppBoxIdx].classList.add('bonus-box');
+                    oppGridCells[oppBoxIdx].innerText = '📦';
+                }
             }
 
             // 🚨 게임 상태 및 플레이어/관전자 여부에 따른 메인 버튼 UI 제어
