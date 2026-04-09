@@ -141,7 +141,7 @@ io.on('connection', (socket) => {
             player.units = units;
         }
 
-        player.placed = true; // ✅ 확정 플래그 정상 작동 확인
+        player.placed = true; 
 
         // 양쪽 모두 확정 시 상태 전환
         if (room.players.length === 2 && room.players.every(p => p.placed)) {
@@ -163,7 +163,7 @@ io.on('connection', (socket) => {
             updateRoomInfo(currentRoom);
         } else {
             socket.emit('systemMsg', "상대방의 작전 완료를 기다리는 중입니다...");
-            updateRoomInfo(currentRoom); // ✅ 상태 변화(버튼 텍스트 변경 등) 즉시 전송
+            updateRoomInfo(currentRoom); 
         }
     });
 
