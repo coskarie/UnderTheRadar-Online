@@ -2103,6 +2103,24 @@
             }
         }
 
+        // 🖱️ [신규 추가] 팝업 외부(바탕화면 등) 클릭 시 팝업 자동 닫기
+        window.addEventListener('click', function(e) {
+            const popup = document.getElementById('in-game-unit-popup');
+            
+            // 팝업이 켜져 있는 상태일 때만 작동
+            if (popup && popup.style.display === 'flex') {
+                // 1. 클릭한 곳이 팝업창 내부인지 확인 (팝업 안의 글씨를 드래그하거나 할 땐 안 닫히게)
+                const isInsidePopup = popup.contains(e.target);
+                // 2. 클릭한 곳이 격자판(유닛)인지 확인 (다른 유닛을 클릭하면 팝업 내용이 바뀌어야 하므로 예외 처리)
+                const isGridCell = e.target.closest('.grid div');
+                
+                // 팝업 안쪽도 아니고, 유닛도 아닌 '허공이나 다른 액션 버튼'을 클릭했다면 깔끔하게 닫기!
+                if (!isInsidePopup && !isGridCell) {
+                    closeUnitPopup();
+                }
+            }
+        });
+
         function resetPlacement() {
             // MOVING 단계일 때도 쓰레기통(초기화) 버튼을 누르면 원위치(Undo) 시켜주는 디테일 추가
             if(gameStatus === 'MOVING') {
