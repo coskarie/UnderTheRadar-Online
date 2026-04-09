@@ -1182,9 +1182,29 @@
             return result;
         }
 
-        // 🚨 액션 버튼 클릭 시 모드 변경 (플래시 이펙트 추가)
+        // 🚨 액션 버튼 클릭 시 모드 변경 (플래시 이펙트 추가 + 전손 검증)
         function setActionMode(mode) {
             if (!isMyTurn && gameStatus === 'PLAYING') return;
+
+            // 🚨 [신규 추가] 연료 검사 전에 유닛 전손 여부부터 확인 (이중 자물쇠)
+            if (mode === 'SNIPE') {
+                const sniper = myUnits.find(u => u.type === 'I');
+                const isSniperAlive = sniper && sniper.cells.length > (sniper.hitCells ? sniper.hitCells.length : 0);
+                if (!isSniperAlive) {
+                    addGameLog("[시스템] ⚠️ 저격수(I)가 전손되어 스킬을 사용할 수 없습니다.");
+                    return; // 실행 중단 (버튼 안 눌림)
+                }
+            } else if (mode === 'MOVE') {
+                const mover = myUnits.find(u => u.type === '1x1');
+                const isMoverAlive = mover && mover.cells.length > (mover.hitCells ? mover.hitCells.length : 0);
+                if (!isMoverAlive) {
+                    addGameLog("[시스템] ⚠️ 기동함선(1x1)이 전손되어 기동할 수 없습니다.");
+                    return; // 실행 중단 (버튼 안 눌림)
+                }
+            }
+
+            // --- (여기서부터는 형님의 기존 로직과 동일합니다) ---
+            
             // 현재 화면에 표시된 연료량을 숫자로 가져옵니다.
             const currentFuel = parseInt(document.getElementById('current-fuel').innerText) || 0;
 
@@ -1204,7 +1224,7 @@
             
             renderMyGrid(); // 1. 먼저 화면을 평소처럼 그립니다.
 
-            // 🚨 [신규 추가] MOVE 모드를 눌렀을 때, 살아있는 1x1 함선을 찾아 하얗게 반짝이게 합니다!
+            // 🚨 MOVE 모드를 눌렀을 때, 살아있는 1x1 함선을 찾아 하얗게 반짝이게 합니다!
             if (mode === 'MOVE') {
                 const cells = document.getElementById('my-grid').children;
                 myUnits.forEach(u => {
@@ -1625,6 +1645,42 @@
             }
         }
 
+        // 🚨 [신규 추가] 유닛 생존 여부에 따라 스킬 버튼을 켜고 끄는 함수
+        function updateSkillButtons() {
+            if (gameStatus !== 'PLAYING' || !myUnits) return;
+
+            // I 블럭(저격수) 생존 확인
+            const sniper = myUnits.find(u => u.type === 'I');
+            const isSniperAlive = sniper && sniper.cells.length > (sniper.hitCells ? sniper.hitCells.length : 0);
+
+            // 1x1 블럭(기동함선) 생존 확인
+            const mover = myUnits.find(u => u.type === '1x1');
+            const isMoverAlive = mover && mover.cells.length > (mover.hitCells ? mover.hitCells.length : 0);
+
+            // SNIPE 버튼 시각적 제어
+            const btnSnipe = document.getElementById('btn-snipe'); // HTML의 저격 버튼 ID (다르다면 수정)
+            if (btnSnipe) {
+                btnSnipe.disabled = !isSniperAlive;
+                btnSnipe.style.opacity = isSniperAlive ? "1" : "0.4";
+                btnSnipe.style.cursor = isSniperAlive ? "pointer" : "not-allowed";
+                if (!isSniperAlive) btnSnipe.title = "저격수(I) 전손: 스킬 사용 불가";
+            }
+
+            // MOVE 버튼 시각적 제어
+            const btnMove = document.getElementById('btn-move'); // HTML의 기동 버튼 ID (다르다면 수정)
+            if (btnMove) {
+                btnMove.disabled = !isMoverAlive;
+                btnMove.style.opacity = isMoverAlive ? "1" : "0.4";
+                btnMove.style.cursor = isMoverAlive ? "pointer" : "not-allowed";
+                if (!isMoverAlive) btnMove.title = "기동함선(1x1) 전손: 스킬 사용 불가";
+            }
+
+            // 만약 파괴된 스킬을 이미 선택하고 있었다면, 강제로 '일반 포격(ATTACK)'으로 돌려버림
+            if ((actionType === 'SNIPE' && !isSniperAlive) || (actionType === 'MOVE' && !isMoverAlive)) {
+                setActionMode('ATTACK');
+            }
+        }
+
         // 🚨 저격 가이드라인을 그리고 지우는 전용 함수
         function renderSniperLines(show) {
             const oppCells = document.getElementById('opponent-grid').children;
@@ -1863,6 +1919,7 @@
                 if (gameStatus === 'PLAYING' && me.units) {
                     myUnits = me.units; // 심판이 관리하는 최신 유닛 상태로 덮어쓰기
                     renderMyGrid();     // 1x1이 부활했다면 화면에 즉시 그려줌
+                    updateSkillButtons();
                 }
             }
             // 👁️ [2] 내가 관전자일 때 (e스포츠 중계 모드)
