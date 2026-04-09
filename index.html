@@ -319,7 +319,7 @@
         .ghost-original { background: rgba(255, 255, 255, 0.6); border: 2px dashed #ecf0f1 !important; } /* 제자리 흰색 껍데기 */
         .ghost-invalid { background: rgba(231, 76, 60, 0.4); }
 
-        .inventory { display: flex; gap: 5px; flex-wrap: wrap; background: #f5daa9; padding: 8px; border-radius: 5px; margin-bottom: 5px; min-height: 45px; }
+        .inventory { display: flex; gap: 5px; flex-wrap: wrap; background: #f5daa9; padding: 5px; border-radius: 5px; margin-bottom: 5px; min-height: 5px; }
         .unit-btn { padding: 6px 10px; border: 1px solid #333; cursor: pointer; background: white; font-weight: bold; font-size: 0.85em; }
         .unit-btn.active { background: #f26419; color: white; border-color: #421c07; }
         
@@ -958,7 +958,7 @@
                 </div>
             </div>
 
-            <div id="unit-inventory" class="inventory"></div>
+            <div id="unit-inventory" class="inventory" style="display: flex; margin: 0; padding: 0;"></div>
 
             <div id="unit-description" class="unit-desc-panel">
                 <div class="panel-bracket bracket-tl"></div>
