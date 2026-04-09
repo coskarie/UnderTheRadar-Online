@@ -347,7 +347,7 @@ io.on('connection', (socket) => {
                     // 상대방(opponent)이 나를 때린 것처럼 위장해서 신호를 쏘면 화면 동기화 완벽 해결!
                     io.to(currentRoom).emit('attackResult', {
                         attacker: opponent.id, 
-                        attackIndex: (9 - Math.floor(expIdx / 14)) * 14 + (expIdx % 14), 
+                        attackIndex: 139 - expIdx,
                         targetIndex: expIdx,
                         hit: isHit,
                         blocked: false,
