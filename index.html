@@ -993,6 +993,66 @@
             border-right: 2px solid rgba(0, 255, 255, 0.8) !important;
         }
 
+        /* 🌟 [A기능] 마우스 오버 시 내 유닛 전체가 밝게 빛나는 효과 */
+        .hover-highlight {
+            filter: brightness(1.8) drop-shadow(0 0 8px #2ecc71) !important;
+            z-index: 10;
+            position: relative;
+        }
+
+        /* 📋 [B기능] 오른쪽 패널 로그창을 덮는 유닛 정보 팝업창 */
+        .right-panel { position: relative; } /* 🚨 기존 .right-panel 클래스에 이 속성이 없으면 팝업이 엉뚱한데 뜹니다! */
+        
+        #in-game-unit-popup {
+            position: absolute;
+            top: 40px; /* '📊 게임 로그' 글자 바로 아래에 맞춰 덮음 */
+            left: 16px;
+            right: 16px;
+            height: 200px; /* 로그창 높이와 동일하게 설정 */
+            background: rgba(5, 10, 5, 0.95);
+            border: 1px solid #2ecc71;
+            border-radius: 4px;
+            padding: 15px;
+            z-index: 100;
+            box-shadow: 0 0 20px rgba(46, 204, 113, 0.4);
+            display: none; /* 평소엔 숨김 */
+            flex-direction: column;
+            gap: 10px;
+            backdrop-filter: blur(5px);
+        }
+        
+        .popup-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid rgba(46, 204, 113, 0.3);
+            padding-bottom: 8px;
+            color: #2ecc71;
+            font-family: 'Rajdhani', sans-serif;
+            font-size: 1.1em;
+            font-weight: 900;
+            letter-spacing: 1px;
+        }
+        
+        .popup-close-btn {
+            background: transparent;
+            border: none;
+            color: #e74c3c;
+            font-size: 1.2em;
+            font-weight: bold;
+            cursor: pointer;
+            transition: 0.2s;
+        }
+        .popup-close-btn:hover { color: #ff6b6b; transform: scale(1.1); }
+        
+        #popup-desc {
+            color: #a0c0a4;
+            font-family: 'Noto Sans KR', sans-serif;
+            font-size: 0.9rem;
+            line-height: 1.5;
+            word-break: keep-all;
+        }
+
     </style>
 </head>
 <body>
@@ -1022,7 +1082,7 @@
             </div>
             
             <div style="margin-top: 40px; margin-bottom: 10px; display: flex; flex-direction: column; gap: 5px;">
-                <input type="text" id="name-input" placeholder="이름 입력" style="padding: 10px; width: 150px;" value="테스터">
+                <input type="text" id="name-input" placeholder="이름 입력" style="padding: 10px; width: 150px;">
                 <input type="number" id="room-input" placeholder="방 번호" style="padding: 10px; width: 150px;" value="1">
             </div>
             <button id="join-btn" onclick="joinGame()" style="margin-top: 25px;">입장하기</button>
@@ -1140,8 +1200,15 @@
 
         <div class="right-panel">
             <strong>📊 게임 로그</strong>
-
             <div id="game-log" class="log-area"></div>
+
+            <div id="in-game-unit-popup">
+                <div class="popup-header">
+                    <span id="popup-title">UNIT INFO: </span>
+                    <button class="popup-close-btn" onclick="closeUnitPopup()">✕</button>
+                </div>
+                <div id="popup-desc">유닛 설명</div>
+            </div>
             <style>
             @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
             </style>
@@ -1288,45 +1355,75 @@
                 oppGrid.appendChild(oCell);
                 
                 const mCell = document.createElement('div');
-                mCell.onmouseenter = function() { showGhost(i); };
+                
+                // 🌟 [A기능] 마우스가 올라갔을 때 (하이라이트 또는 고스트)
+                mCell.onmouseenter = function() { 
+                    if (gameStatus === 'PLAYING') {
+                        const hoveredUnit = myUnits.find(u => u.cells.includes(i));
+                        if (hoveredUnit) {
+                            const cells = document.getElementById('my-grid').children;
+                            hoveredUnit.cells.forEach(c => {
+                                if (cells[c]) cells[c].classList.add('hover-highlight');
+                            });
+                        }
+                    } else {
+                        showGhost(i); // 배치/기동 단계 잔상
+                    }
+                };
+
+                // 🌟 [A기능] 마우스가 빠져나갔을 때 (하이라이트 제거)
+                mCell.onmouseleave = function() {
+                    if (gameStatus === 'PLAYING') {
+                        const hoveredUnit = myUnits.find(u => u.cells.includes(i));
+                        if (hoveredUnit) {
+                            const cells = document.getElementById('my-grid').children;
+                            hoveredUnit.cells.forEach(c => {
+                                if (cells[c]) cells[c].classList.remove('hover-highlight');
+                            });
+                        }
+                    }
+                    // clearGhost는 부모 my-grid의 onmouseleave로도 처리되지만 여기서도 안전하게 처리
+                };
+
+                // 📋 [B기능] 클릭했을 때 (기존 기동 로직 + 설명 팝업)
                 mCell.onclick = function() { 
-                    if(gameStatus === 'PLAYING' && isMyTurn) {
-                        if (actionMode === 'MOVE') {
-                            // 🚨 5프레이즈 본대 기동 턴인지 확인
+                    if(gameStatus === 'PLAYING') {
+                        const clickedUnit = myUnits.find(u => u.cells.includes(i));
+
+                        // 1. 내 턴이고 기동(MOVE) 모드일 때는 기존 기동 로직 실행
+                        if (isMyTurn && actionMode === 'MOVE') {
+                            // (형님의 기존 MOVE 본대/1x1 기동 로직이 들어가는 자리)
                             const isFleetManeuver = (currentPhrase > 0 && currentPhrase % 5 === 0);
-
                             if (selected1x1Idx === -1) {
-                                // 1. 내가 클릭한 칸에 있는 유닛 찾기
-                                const clickedUnit = myUnits.find(u => u.cells.includes(i));
-                                if (!clickedUnit) return; // 빈칸 클릭 무시
-
+                                if (!clickedUnit) return; 
                                 if (isFleetManeuver) {
-                                    // 🚢 본대 기동: 상자/지뢰 빼고 모두 선택 가능!
                                     if (clickedUnit.type === '📦' || clickedUnit.type === '💣') {
-                                        addGameLog("❌ 보급 상자나 지뢰는 이동할 수 없습니다.");
-                                        return;
+                                        addGameLog("❌ 보급 상자나 지뢰는 이동할 수 없습니다."); return;
                                     }
-                                    selected1x1Idx = i; // 현재 클릭한 위치를 기준점으로 저장
-                                    renderMyGrid(); 
+                                    selected1x1Idx = i; renderMyGrid(); 
                                 } else {
-                                    // 🚀 일반 기동: 1x1 기동함선만 선택 가능
                                     if (clickedUnit.type !== '1x1') {
-                                        addGameLog("❌ 일반 기동 턴입니다. 1x1 기동함선만 선택 가능합니다.");
+                                        // 🚨 MOVE 모드인데 다른 유닛을 눌렀다면 에러 로그 대신 팝업을 띄워줌!
+                                        openUnitPopup(clickedUnit.type);
                                         return;
                                     }
-                                    selected1x1Idx = i;
-                                    renderMyGrid();
+                                    selected1x1Idx = i; renderMyGrid();
                                 }
                                 return;
                             } else {
-                                // 2. 이동 목적지 클릭 완료 -> 서버로 이동 명령 발사!
                                 socket.emit('move1x1', { from: selected1x1Idx, to: i });
-                                selected1x1Idx = -1; // 선택 해제
-                                renderMyGrid();
+                                selected1x1Idx = -1; renderMyGrid();
                                 return;
                             }
                         }
+
+                        // 2. 그 외의 모든 상황(ATTACK, SNIPE이거나 내 턴이 아닐 때)에서 내 유닛 클릭 시 팝업!
+                        if (clickedUnit) {
+                            openUnitPopup(clickedUnit.type);
+                        }
+
                     } else {
+                        // 게임 중이 아닐 때 (배치 단계)
                         placeOrPickUnit(i); 
                     }
                 };
@@ -1927,6 +2024,20 @@
                 addGameLog("📡 [정기 스캔] 탐색 구역 내 특이사항 없습니다.");
             }
         });
+        
+        // 📋 [신규 추가] 인게임 유닛 정보 팝업 열기/닫기 함수
+        function openUnitPopup(type) {
+            const popup = document.getElementById('in-game-unit-popup');
+            document.getElementById('popup-title').innerText = `UNIT INFO: ${type}`;
+            document.getElementById('popup-desc').innerText = UNIT_DESCRIPTIONS[type] || '설명이 없습니다.';
+            
+            // 나타나는 애니메이션 겸해서 display flex로 켬
+            popup.style.display = 'flex';
+        }
+
+        function closeUnitPopup() {
+            document.getElementById('in-game-unit-popup').style.display = 'none';
+        }
 
         function showGhost(idx) {
             clearGhost();
