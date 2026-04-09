@@ -1017,7 +1017,7 @@
             <button id="join-btn" onclick="joinGame()" style="margin-top: 25px;">입장하기</button>
         </div>
     </div>
-    
+
     <div id="victory-screen">
         <div class="corner-bracket bracket-tl"></div>
         <div class="corner-bracket bracket-tr"></div>
@@ -2526,34 +2526,31 @@
 
 
 
-        // 중요함수__________________________________
         socket.on('gameOver', data => {
             gameStatus = 'ENDED';
             const btn = document.getElementById('start-btn');
 
-            // 내 닉네임을 비교하여 승패를 판단합니다 (로그인 시의 내 이름 변수 'myName' 기준)
-            if (data.winner === myName) {
-                // 승리 연출
+            // 🚨 이름(myName)이 아니라, 절대 겹치지 않는 고유 ID(socket.id)로 내가 이겼는지 판정!!
+            if (data.winnerId === socket.id) {
+                // 승리 연출 (내가 때려서 끝냈을 때)
                 const vScreen = document.getElementById('victory-screen');
                 vScreen.classList.add('active');
                 addGameLog(`[시스템] 🏆 전 구역 소탕 완료! 전투에서 승리했습니다!`);
                 
-                // 3초 후 페이드아웃 시작
                 setTimeout(() => vScreen.classList.remove('active'), 3000);
             } else {
-                // 패배 연출
+                // 패배 연출 (맞아서 끝났을 때)
                 const dScreen = document.getElementById('defeat-screen');
                 dScreen.classList.add('active');
                 addGameLog(`[시스템] 💥 본대 전멸... 전투에서 패배했습니다.`);
                 
-                // 3초 후 페이드아웃 시작
                 setTimeout(() => dScreen.classList.remove('active'), 3000);
             }
 
             // 연출이 완전히 끝나는 4.5초 뒤에 버튼을 '게임 종료(로비로)'로 변경
             setTimeout(() => {
                 btn.disabled = false;
-                btn.innerText = "게임 종료"; // 누르면 rematch 로직 타게 됨
+                btn.innerText = "게임 종료"; 
             }, 4500);
         });
 
