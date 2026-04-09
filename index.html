@@ -900,10 +900,10 @@
         #victory-screen .corner-bracket { border: 3px solid var(--neon-green); }
         #defeat-screen .corner-bracket { border: 3px solid var(--tactical-red); }
 
-        .bracket-tl { top: 15%; left: 15%; border-right: 0; border-bottom: 0; }
-        .bracket-tr { top: 15%; right: 15%; border-left: 0; border-bottom: 0; }
-        .bracket-bl { bottom: 15%; left: 15%; border-right: 0; border-top: 0; }
-        .bracket-br { bottom: 15%; right: 15%; border-left: 0; border-top: 0; }
+        #victory-screen .bracket-tl, #defeat-screen .bracket-tl { top: 15%; left: 15%; border-right: 0; border-bottom: 0; }
+        #victory-screen .bracket-tr, #defeat-screen .bracket-tr { top: 15%; right: 15%; border-left: 0; border-bottom: 0; }
+        #victory-screen .bracket-bl, #defeat-screen .bracket-bl { bottom: 15%; left: 15%; border-right: 0; border-top: 0; }
+        #victory-screen .bracket-br, #defeat-screen .bracket-br { bottom: 15%; right: 15%; border-left: 0; border-top: 0; }
 
         .active .corner-bracket { animation: bracket-flicker-in 4.5s cubic-bezier(0.19, 1, 0.22, 1) forwards; }
 
