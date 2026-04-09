@@ -1017,6 +1017,40 @@
             <button id="join-btn" onclick="joinGame()" style="margin-top: 25px;">입장하기</button>
         </div>
     </div>
+    
+    <div id="victory-screen">
+        <div class="corner-bracket bracket-tl"></div>
+        <div class="corner-bracket bracket-tr"></div>
+        <div class="corner-bracket bracket-bl"></div>
+        <div class="corner-bracket bracket-br"></div>
+        <div class="scan-line line-h"></div>
+        <div class="scan-line line-v"></div>
+        <div class="result-title">
+            <div class="mission-text">Mission</div>
+            <div class="status-text">Complete</div>
+        </div>
+        <div class="data-stream">
+            &gt; ENEMY FLEET NEUTRALIZED // SECTOR_CLEAR [OK]<br>
+            &gt; SYSTEM_STATUS: VICTORY_CONFIRMED
+        </div>
+    </div>
+
+    <div id="defeat-screen">
+        <div class="corner-bracket bracket-tl"></div>
+        <div class="corner-bracket bracket-tr"></div>
+        <div class="corner-bracket bracket-bl"></div>
+        <div class="corner-bracket bracket-br"></div>
+        <div class="scan-line line-h"></div>
+        <div class="scan-line line-v"></div>
+        <div class="result-title">
+            <div class="mission-text">Mission</div>
+            <div class="status-text">Failed</div>
+        </div>
+        <div class="data-stream">
+            &gt; CRITICAL DAMAGE DETECTED // UNIT_LOST [ERROR]<br>
+            &gt; SYSTEM_STATUS: OPERATION_TERMINATED
+        </div>
+    </div>
 
     <div id="main-game">
         <div class="left-panel">
