@@ -1043,7 +1043,7 @@
 
         const UNIT_DESCRIPTIONS = {
             'ㄷ': '제조창: 기동함선이 파괴될 시 10턴 후 자동 복구합니다.',
-            'L': '레이더: 해당 열에 적 기동함선이 진입하면 즉시 포착합니다.',
+            'L': '레이더: 해당 열에 적 기동함선이 진입하면 즉시 포착합니다. 10프레이즈마다 랜덤하게 조사합니다.',
             'T': '방패: 자신을 포함한 뒷라인을 적의 공격으로부터 보호합니다.',
             'ㅗ': '일반 함선입니다.',
             'I': '저격수: 마주보는 x좌표에 적을 공격합니다.',
@@ -1150,7 +1150,7 @@
                                 return;
                             } else {
                                 // 2. 이동 목적지 클릭 완료 -> 서버로 이동 명령 발사!
-                                socket.emit('moveUnit', { oldIdx: selected1x1Idx, newIdx: i });
+                                socket.emit('move1x1', { oldIdx: selected1x1Idx, newIdx: i });
                                 selected1x1Idx = -1; // 선택 해제
                                 renderMyGrid();
                                 return;
@@ -1906,7 +1906,7 @@
                 const myGridCells = document.getElementById('my-grid').children;
                 const oppGridCells = document.getElementById('opponent-grid').children;
 
-                const boxIdx = isP1 ? data.bonusBox : (9 - Math.floor(data.bonusBox / 14)) * 14 + (data.bonusBox % 14);
+                const boxIdx = isP1 ? data.bonusBox : (139 - data.bonusBox);
 
                 if (myGridCells[boxIdx]) myGridCells[boxIdx].classList.add('bonus-box');
                 if (oppGridCells[boxIdx]) oppGridCells[boxIdx].classList.add('bonus-box');
@@ -2366,11 +2366,9 @@
 
         socket.on('syncMovedUnit', data => {
             if (!isPlayer) return; 
-            
             let unit = myUnits.find(u => u.cells.includes(data.oldIdx));
-            
-            if (unit && data.cells) {
-                unit.cells = data.cells; 
+            if (unit && data.newIdx !== undefined) {
+                unit.cells = [data.newIdx];
             }
             renderMyGrid();
         });
