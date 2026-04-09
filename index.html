@@ -1762,6 +1762,8 @@
                 const hasBonus = cells[i].classList.contains('bonus-box');
                 cells[i].className = hasBonus ? 'bonus-box' : '';
                 cells[i].style.opacity = "1";
+                // 기존에 상자 이모티콘이 남을 수 있으니 빈칸일 땐 텍스트 지워주기 (안전장치)
+                if (!hasBonus) cells[i].innerText = ''; 
             }
             
             // 확정 버튼을 눌러서 movingOriginalState가 null이 되면, 이 조건문을 알아서 건너뛰면서 흰색 껍데기가 싹 사라집니다!
@@ -1777,14 +1779,13 @@
                     // 🚨 총 칸 수를 200에서 140으로 수정
                     if(c < 0 || c >= 140) return;
                     cells[c].classList.add('my-unit');
-                    
                     // 🚨 강철 상자(📦)일 경우 갈색 클래스 덮어씌우기
                     if (u.type === '📦') {
                         cells[c].classList.add('box-unit'); 
+                        cells[c].innerText = '📦'; // 본대 상자 이모티콘
                     } else if (u.type === '💣') {
                         cells[c].classList.add('bomb-unit'); // 🚨 폭탄 전용 클래스 부착
                     }
-
 
                     if(u.isHit) cells[c].style.opacity = "0.6";
                     if(u.hitCells && u.hitCells.includes(c)) cells[c].classList.add('hit-unit');
@@ -1811,6 +1812,17 @@
                             cells[i].classList.add('move-highlight');
                         }
                     }
+                }
+            }
+
+            // 🚨🚨 보급 상자 렌더링 (에러 완벽 수정본) 🚨🚨
+            if (globalBonusBox !== null && globalBonusBox !== undefined && gameStatus === 'PLAYING') {
+                const boxIdx = isP1 ? globalBonusBox : (139 - globalBonusBox);
+                // grid.children 대신 맨 위에서 선언한 cells 변수 사용!
+                const cell = cells[boxIdx]; 
+                if (cell) {
+                    cell.classList.add('bonus-box');
+                    cell.innerText = '📦';
                 }
             }
         }
@@ -2043,6 +2055,7 @@
         }
 
         let currentPhrase = 0; // 🚨 [신규 추가] 현재 프레이즈(턴)을 기억할 변수
+        let globalBonusBox = null;
 
         socket.on('roomData', data => {
             if (!data) return; 
@@ -2058,6 +2071,7 @@
             isPlayer = !!me; 
             if (!(gameStatus === 'MOVING' && data.gameState === 'PLAYING')) {
                 gameStatus = data.gameState;
+                globalBonusBox = data.bonusBox;
             }
 
             // 🏷️ 이름표 DOM 가져오기
@@ -2437,7 +2451,7 @@
                     }
                 }
             }
-            
+
         });
 
         socket.on('radarDetected', data => {
