@@ -300,7 +300,7 @@ io.on('connection', (socket) => {
         } 
         else if (hitResult) {
             // 💥 타격 성공했을 때
-            const allDestroyed = opponent.units.every(u => u.type === '📦' || u.cells.length === (u.hitCells ? u.hitCells.length : 0));
+            const allDestroyed = opponent.units.every(u => u.type === '📦' || u.type === '💣' || u.cells.length === (u.hitCells ? u.hitCells.length : 0));
             
             if (allDestroyed) {
                 io.to(currentRoom).emit('attackResult', { attacker: socket.id, attackIndex, targetIndex, hit: true });
