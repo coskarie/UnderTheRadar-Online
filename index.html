@@ -856,6 +856,131 @@
             margin: 0;
             letter-spacing: 2px;
         }
+
+        /* ==========================================
+           🚨 승리 / 패배 모션 전용 CSS
+           ========================================== */
+        :root {
+            --neon-green: #00ff66;
+            --tactical-red: #ff3333;
+        }
+
+        #victory-screen, #defeat-screen {
+            position: fixed;
+            inset: 0;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 9999;
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 1.5s cubic-bezier(0.4, 0, 0.2, 1), visibility 1.5s;
+            pointer-events: none; /* 화면 클릭 방해 방지 */
+        }
+
+        #victory-screen { background: radial-gradient(circle, #0a1a0f 0%, #000 100%); }
+        #defeat-screen { background: radial-gradient(circle, #1a0a0a 0%, #000 100%); }
+
+        #victory-screen.active, #defeat-screen.active {
+            opacity: 1;
+            visibility: visible;
+            transition: opacity 0.1s ease-out;
+            pointer-events: auto;
+        }
+
+        /* 대각선 브라켓 */
+        .corner-bracket {
+            position: absolute;
+            width: 60px;
+            height: 60px;
+            opacity: 0;
+            z-index: 1005;
+        }
+        #victory-screen .corner-bracket { border: 3px solid var(--neon-green); }
+        #defeat-screen .corner-bracket { border: 3px solid var(--tactical-red); }
+
+        .bracket-tl { top: 15%; left: 15%; border-right: 0; border-bottom: 0; }
+        .bracket-tr { top: 15%; right: 15%; border-left: 0; border-bottom: 0; }
+        .bracket-bl { bottom: 15%; left: 15%; border-right: 0; border-top: 0; }
+        .bracket-br { bottom: 15%; right: 15%; border-left: 0; border-top: 0; }
+
+        .active .corner-bracket { animation: bracket-flicker-in 4.5s cubic-bezier(0.19, 1, 0.22, 1) forwards; }
+
+        @keyframes bracket-flicker-in {
+            0% { transform: scale(2); opacity: 0; }
+            10% { opacity: 1; transform: scale(1); }
+            15% { opacity: 0.3; }
+            20% { opacity: 1; }
+            25% { opacity: 0.4; }
+            30%, 85% { opacity: 1; transform: scale(1); }
+            100% { opacity: 0; transform: scale(1.5); filter: blur(10px); }
+        }
+
+        /* 전술 스캔 라인 */
+        .scan-line { position: absolute; opacity: 0; }
+        #victory-screen .scan-line { background: var(--neon-green); box-shadow: 0 0 20px var(--neon-green); }
+        #defeat-screen .scan-line { background: var(--tactical-red); box-shadow: 0 0 20px var(--tactical-red); }
+
+        .line-h { width: 100%; height: 1px; left: 0; top: 50%; transform: scaleX(0); }
+        .line-v { width: 1px; height: 100%; top: 0; left: 50%; transform: translateX(-50%); }
+
+        .active .line-h { animation: line-expand-h 4.5s forwards; }
+        .active .line-v { animation: line-expand-v 4.5s forwards; }
+
+        @keyframes line-expand-h {
+            0% { transform: scaleX(0); opacity: 1; }
+            10% { transform: scaleX(1); opacity: 1; height: 4px; }
+            85% { transform: scaleX(1); opacity: 0.3; height: 1px; }
+            100% { transform: scaleX(1.2); opacity: 0; }
+        }
+        @keyframes line-expand-v {
+            0% { transform: scaleY(0); opacity: 1; }
+            10% { transform: scaleY(1); opacity: 1; width: 4px; }
+            85% { transform: scaleY(1); opacity: 0.3; width: 1px; }
+            100% { transform: scaleY(1.2); opacity: 0; }
+        }
+
+        /* 타이포그래피 */
+        .result-title { text-align: center; z-index: 100; perspective: 1000px; }
+        .mission-text {
+            font-size: 5rem; color: #fff; letter-spacing: 2.5rem; text-transform: uppercase;
+            margin-bottom: -1rem; opacity: 0;
+        }
+        .active .mission-text { animation: text-exit-left 4.5s cubic-bezier(0.17, 0.84, 0.44, 1) forwards; }
+
+        @keyframes text-exit-left {
+            0% { opacity: 0; transform: translateZ(200px); letter-spacing: 2.5rem; }
+            15%, 85% { opacity: 1; transform: translateZ(0) translateX(0); letter-spacing: 1rem; }
+            100% { opacity: 0; transform: translateX(-400px) skewX(30deg); filter: blur(15px); }
+        }
+
+        .status-text { font-size: 8rem; letter-spacing: 1.5rem; text-transform: uppercase; font-weight: 900; opacity: 0; }
+        #victory-screen .status-text { color: var(--neon-green); }
+        #defeat-screen .status-text { color: var(--tactical-red); }
+
+        .active .status-text { animation: text-exit-right 4.5s cubic-bezier(0.17, 0.84, 0.44, 1) forwards; }
+
+        @keyframes text-exit-right {
+            0% { opacity: 0; filter: blur(10px); transform: scale(0.8); }
+            20%, 85% { opacity: 1; filter: blur(0); transform: scale(1) translateX(0); }
+            100% { opacity: 0; transform: translateX(400px) skewX(-30deg); filter: blur(20px); }
+        }
+
+        /* 하단 데이터 스트림 */
+        .data-stream {
+            position: absolute; bottom: 50px; font-family: 'Inconsolata', monospace;
+            font-size: 0.9rem; letter-spacing: 3px; opacity: 0;
+        }
+        #victory-screen .data-stream { color: var(--neon-green); }
+        #defeat-screen .data-stream { color: var(--tactical-red); }
+
+        .active .data-stream { animation: fade-in-out 4.5s forwards; }
+        @keyframes fade-in-out {
+            0% { opacity: 0; }
+            15%, 85% { opacity: 0.6; }
+            100% { opacity: 0; }
+        }
         
     </style>
 </head>
@@ -2369,19 +2494,33 @@
 
         // 중요함수__________________________________
         socket.on('gameOver', data => {
-            gameStatus = "ENDED";
+            gameStatus = 'ENDED';
             const btn = document.getElementById('start-btn');
-            btn.disabled = false; 
-            btn.innerText = "게임 종료"; 
-            btn.style.background = "rgba(142, 68, 173, 0.15)";
-            btn.style.color = "#9b59b6";
-            btn.style.borderColor = "#9b59b6";
-            addGameLog("[시스템] 게임 종료! 승자: " + data.winner);
-            
-            // 게임 끝났으니 모든 보급 상자 이펙트 제거!
-            document.querySelectorAll('.bonus-box').forEach(el => el.classList.remove('bonus-box'));
-            
-            alert("게임 종료! 승자: " + data.winner);
+
+            // 내 닉네임을 비교하여 승패를 판단합니다 (로그인 시의 내 이름 변수 'myName' 기준)
+            if (data.winner === myName) {
+                // 승리 연출
+                const vScreen = document.getElementById('victory-screen');
+                vScreen.classList.add('active');
+                addGameLog(`[시스템] 🏆 전 구역 소탕 완료! 전투에서 승리했습니다!`);
+                
+                // 3초 후 페이드아웃 시작
+                setTimeout(() => vScreen.classList.remove('active'), 3000);
+            } else {
+                // 패배 연출
+                const dScreen = document.getElementById('defeat-screen');
+                dScreen.classList.add('active');
+                addGameLog(`[시스템] 💥 본대 전멸... 전투에서 패배했습니다.`);
+                
+                // 3초 후 페이드아웃 시작
+                setTimeout(() => dScreen.classList.remove('active'), 3000);
+            }
+
+            // 연출이 완전히 끝나는 4.5초 뒤에 버튼을 '게임 종료(로비로)'로 변경
+            setTimeout(() => {
+                btn.disabled = false;
+                btn.innerText = "게임 종료"; // 누르면 rematch 로직 타게 됨
+            }, 4500);
         });
 
         socket.on('rematchStarted', () => { 
