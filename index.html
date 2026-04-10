@@ -188,20 +188,16 @@
             border-bottom: 1px solid rgba(127, 29, 29, 0.3); /* 제목 아래 얇은 선 */
         }
 
-        /* 💀 3. 로그 및 채팅 영역 (어두운 이너 박스) */
         .log-area, .chat-area {
             background-color: rgba(20, 0, 0, 0.5); 
             border: 1px solid rgba(220, 38, 38, 0.2);
             border-radius: 4px;
             padding: 8px;
             margin-bottom: 15px;
-
-            /* 🚨 날아간 박스 형태 복구! (이 두 줄을 추가해 주세요) */
-            height: 200px; /* 로그창 높이 (너무 작으면 200px 등으로 늘려주세요) */
-            overflow-y: auto; /* 글이 넘치면 스크롤 생성 */
+            height: 200px;
+            overflow-y: auto; 
         }
 
-        /* 🩸 4. 얇은 빨간색 스크롤바 커스텀 */
         .log-area::-webkit-scrollbar, .chat-area::-webkit-scrollbar {
             width: 4px;
         }
@@ -1095,6 +1091,28 @@
             }
         }
 
+        /* =========================================
+           🚀 저격(Snipe) 시각 이펙트 CSS
+           ========================================= */
+        .snipe-bullet {
+            position: fixed;
+            width: 30px;
+            height: 4px;
+            background: linear-gradient(90deg, transparent, rgba(255, 100, 0, 0.8), #ffea00, #ffffff);
+            border-radius: 2px;
+            pointer-events: none;
+            z-index: 9000;
+            transform-origin: left center; 
+            box-shadow: 0 0 8px #ff6600, 0 0 15px #ffea00;
+        }
+
+        .firework-spark {
+            position: fixed;
+            pointer-events: none;
+            z-index: 9002;
+            border-radius: 50%;
+        }
+
     </style>
 </head>
 <body>
@@ -1397,6 +1415,10 @@
                                 addGameLog("[차단] 저격은 가이드라인(하늘색)이 쳐진 X좌표만 공격할 수 있습니다!");
                                 return; 
                             }
+                            
+                            // 🚀 [신규 추가] 클릭 즉시 클라이언트 단독으로 저격 이펙트 발사!
+                            fireSnipe(i);
+
                             renderSniperLines(false);
                             setActionMode('ATTACK'); 
                         } 
@@ -1662,7 +1684,105 @@
             }
         });
 
+        // =========================================
+        // 🔫 저격(Snipe) 시각 이펙트 엔진
+        // =========================================
+        function fireSnipe(targetIdx) {
+            // 1. 발사할 아군 저격수(I)의 셀 인덱스 찾기 (타겟과 X좌표가 같은 칸)
+            let shooterIdx = -1;
+            myUnits.forEach(u => {
+                if (u.type === 'I') {
+                    const isAlive = u.cells.length > (u.hitCells ? u.hitCells.length : 0);
+                    if (isAlive) {
+                        u.cells.forEach(c => {
+                            // 타겟과 열(col)이 일치하는 I블럭의 한 칸을 발사구로 지정
+                            if (c % 14 === (targetIdx % 14)) {
+                                shooterIdx = c;
+                            }
+                        });
+                    }
+                }
+            });
 
+            if (shooterIdx === -1) return; // 안전장치: 혹시라도 못 찾으면 취소
+
+            // 2. 출발지(내 격자)와 목적지(상대 격자) 중앙 픽셀 좌표 가져오기
+            const startCoords = getCellCoords('my-grid', shooterIdx);
+            const targetCoords = getCellCoords('opponent-grid', targetIdx);
+
+            // 탄도학 계산
+            const deltaX = targetCoords.x - startCoords.x;
+            const deltaY = targetCoords.y - startCoords.y;
+            const angle = Math.atan2(deltaY, deltaX) * (180 / Math.PI); 
+            const distance = Math.sqrt((deltaX * deltaX) + (deltaY * deltaY));
+
+            // 3. 탄알(Tracer) 생성
+            const bullet = document.createElement('div');
+            bullet.className = 'snipe-bullet';
+            bullet.style.left = startCoords.x + 'px';
+            bullet.style.top = startCoords.y + 'px';
+            document.body.appendChild(bullet);
+
+            // 거리에 비례한 체공 시간 (묵직하고 빠른 속도)
+            const travelTime = 80 + (distance * 0.15); 
+
+            // 4. 발사 애니메이션
+            const animation = bullet.animate([
+                { transform: `translate(0, -50%) rotate(${angle}deg) translateX(0px)` },
+                { transform: `translate(0, -50%) rotate(${angle}deg) translateX(${distance}px)` }
+            ], {
+                duration: travelTime,
+                easing: 'ease-in'
+            });
+
+            // 5. 도착 순간 폭발
+            animation.onfinish = () => {
+                bullet.remove();
+                createFirework(targetCoords.x, targetCoords.y);
+            };
+        }
+
+        // =========================================
+        // 🎇 저격 탄환 피격 파편 (화약/금속 불꽃)
+        // =========================================
+        function createFirework(x, y) {
+            const particleCount = 35; 
+            const colors = ['#ffea00', '#ff9900', '#ff6600', '#ff3300', '#cc0000'];
+
+            for (let i = 0; i < particleCount; i++) {
+                const spark = document.createElement('div');
+                spark.className = 'firework-spark';
+                
+                const size = Math.random() * 3 + 2; 
+                spark.style.width = size + 'px';
+                spark.style.height = size + 'px';
+                
+                const color = colors[Math.floor(Math.random() * colors.length)];
+                spark.style.backgroundColor = color;
+                spark.style.boxShadow = `0 0 6px ${color}`; 
+
+                spark.style.left = x + 'px';
+                spark.style.top = y + 'px';
+                document.body.appendChild(spark);
+
+                const angle = Math.random() * Math.PI * 2; 
+                const velocity = Math.random() * 80 + 30; 
+                
+                const destX = Math.cos(angle) * velocity;
+                const destY = Math.sin(angle) * velocity;
+
+                const anim = spark.animate([
+                    { transform: 'translate(-50%, -50%) scale(1)', opacity: 1 },
+                    { transform: `translate(calc(-50% + ${destX}px), calc(-50% + ${destY}px)) scale(0)`, opacity: 0 }
+                ], {
+                    duration: 400 + Math.random() * 400, 
+                    easing: 'cubic-bezier(0.1, 0.9, 0.2, 1)' 
+                });
+
+                anim.onfinish = () => spark.remove();
+            }
+        }
+        
         // =========================================
         // 🚀 미사일 융단폭격 엔진 (형님이 만든 코드 기반)
         // =========================================
