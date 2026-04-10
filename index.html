@@ -1052,6 +1052,48 @@
             line-height: 1.5;
             word-break: keep-all;
         }
+        .passive-shield-glass {
+            position: relative; /* ::after를 덮어씌우기 위한 기준점 */
+        }
+        .passive-shield-glass::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            pointer-events: none; /* 마우스 클릭 방해 금지 */
+            z-index: 5; /* 유닛 배경색 위에 덮어씌워짐 */
+            
+            /* ✨ 대각선 유리 광택 느낌을 주는 그라데이션 */
+            background: linear-gradient(135deg, 
+                rgba(255, 255, 255, 0) 0%, 
+                rgba(255, 255, 255, 0.03) 40%, 
+                rgba(255, 255, 255, 0.2) 50%, 
+                rgba(255, 255, 255, 0.03) 60%, 
+                rgba(255, 255, 255, 0) 100%);
+                
+            /* 쉴드의 양옆 경계선 (홀로그램 엣지 느낌) */
+            border-left: 1px solid rgba(0, 225, 255, 0.3);
+            border-right: 1px solid rgba(0, 225, 255, 0.3);
+            box-shadow: inset 0 0 10px rgba(0, 225, 255, 0.1);
+            
+            /* 가끔씩 번쩍! 하는 애니메이션 적용 */
+            animation: shield-passive-blink 4s infinite;
+        }
+
+        /* ⚡ 평소엔 잔잔하다가 4초마다 한 번씩 하늘색으로 강하게 빛나는 애니메이션 */
+        @keyframes shield-passive-blink {
+            0%, 85% { 
+                background-color: rgba(0, 225, 255, 0.05); 
+                box-shadow: inset 0 0 10px rgba(0, 225, 255, 0.1);
+            }
+            92% { 
+                background-color: rgba(0, 225, 255, 0.25); 
+                box-shadow: inset 0 0 20px rgba(0, 225, 255, 0.6);
+            }
+            100% { 
+                background-color: rgba(0, 225, 255, 0.05); 
+                box-shadow: inset 0 0 10px rgba(0, 225, 255, 0.1);
+            }
+        }
 
     </style>
 </head>
@@ -1309,13 +1351,26 @@
             myName = document.getElementById('name-input').value;
             myRoom = document.getElementById('room-input').value;
             if(!myName || !myRoom) return alert("입력 정보 부족!");
+            
+            // 서버에 입장 요청
+            socket.emit('joinRoom', { roomCode: myRoom, name: myName });
+        }
+
+        // 🚨 [신규 추가] 서버에서 중복 이름이라고 빠꾸(?) 먹였을 때
+        socket.on('joinError', (msg) => {
+            alert(msg); // "이미 사용 중인 이름입니다." 알림창 띄움
+        });
+
+        // 🚨 [신규 추가] 서버에서 입장을 허락했을 때 비로소 게임 화면으로 넘어감!
+        socket.on('joinSuccess', () => {
             document.getElementById('my-name-display').innerText = myName;
             document.getElementById('login-screen').style.display = 'none';
             document.getElementById('main-game').style.display = 'flex';
-            socket.emit('joinRoom', { roomCode: myRoom, name: myName });
             renderInventory();
             initGrids();
-        }
+        });
+
+
 
         function initGrids() {
             const oppGrid = document.getElementById('opponent-grid');
@@ -1868,6 +1923,32 @@
                     if(c >= 0 && c < 140) cells[c].classList.add('ghost-original');
                 });
             }
+
+            myUnits.forEach(u => {
+                if (u.type === 'T') {
+                    // T블럭이 완전히 파괴되지 않고 살아있는지 확인
+                    const isAlive = u.cells.length > (u.hitCells ? u.hitCells.length : 0);
+                    if (isAlive) {
+                        const tXs = u.cells.map(c => c % 14);
+                        const tYs = u.cells.map(c => Math.floor(c / 14));
+                        
+                        const minX = Math.min(...tXs); // T블럭의 가장 왼쪽 X
+                        const maxX = Math.max(...tXs); // T블럭의 가장 오른쪽 X
+                        const minY = Math.min(...tYs); // T블럭의 최전방(맨 앞) Y좌표
+
+                        // 140칸 전체를 스캔하며 쉴드 범위에 해당하는지 검사
+                        for (let i = 0; i < 140; i++) {
+                            const cX = i % 14;
+                            const cY = Math.floor(i / 14);
+                            
+                            // 조건: T블럭의 너비(X) 안에 있고, T블럭 앞면(minY)보다 뒤에(Y가 큼) 있으며, T블럭 자체 좌표는 아닐 것
+                            if (cX >= minX && cX <= maxX && cY > minY && !u.cells.includes(i)) {
+                                cells[i].classList.add('passive-shield-glass');
+                            }
+                        }
+                    }
+                }
+            });
 
             myUnits.forEach(u => {
                 u.cells.forEach(c => {
