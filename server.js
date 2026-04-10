@@ -23,6 +23,16 @@ io.on('connection', (socket) => {
     // 1. 방 입장
     socket.on('joinRoom', (data) => {
         const { roomCode, name } = data;
+        // 🚨 [신규 추가] 중복 이름 검사 로직
+        if (rooms[roomCode]) {
+            const isTaken = rooms[roomCode].players.some(p => p.name === name) || 
+                            rooms[roomCode].spectators.some(s => s.name === name);
+            if (isTaken) {
+                // 중복된 이름이 있으면 에러 메시지만 쏘고 함수를 즉시 종료합니다.
+                socket.emit('joinError', '이미 사용 중인 이름입니다.');
+                return; 
+            }
+        }
         currentRoom = roomCode;
         userName = name;
         socket.join(roomCode);
@@ -42,6 +52,8 @@ io.on('connection', (socket) => {
         rooms[roomCode].spectators.push({ id: socket.id, name: userName });
         updateRoomInfo(roomCode);
         io.to(roomCode).emit('systemMsg', `${userName}님이 입장하셨습니다.`);
+
+        socket.emit('joinSuccess');
     });
 
     // 2. 역할 변경 (플레이어 <-> 관전자)
