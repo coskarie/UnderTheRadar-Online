@@ -2882,6 +2882,14 @@
                     if (data.hit) {
                         triggerShake('opponent-grid');
                         createRoughExplosion(lastClickX, lastClickY);
+
+                        // 🚨🚨 [핵심 추가] 공격자 시점: 적 유닛 전손(Wreck) 이펙트 발동! 🚨🚨
+                        // (서버에서 이 공격으로 적 유닛이 파괴되었다는 isDestroyed: true 신호가 올 때 작동)
+                        if (data.isDestroyed) {
+                            const coords = getCellCoords('opponent-grid', data.attackIndex);
+                            createWreckExplosion(coords.x, coords.y);
+                            addGameLog(`[시스템] 💥 적 함선을 완전히 파괴했습니다!`);
+                        }
                     }
                 } else {
                     const cell = document.getElementById('opponent-grid').children[data.attackIndex];
