@@ -330,14 +330,12 @@ io.on('connection', (socket) => {
             
             if (hitType === 'T' && type !== 'SNIPE') {
                 passTurn(room, opponent.id);
-                // 🚨 일반 타격 명중 시 isDestroyed 추가
                 io.to(currentRoom).emit('attackResult', { attacker: socket.id, attackIndex, targetIndex, hit: true, nextTurn: opponent.id, isDestroyed: justDestroyed });
                 io.to(currentRoom).emit('systemMsg', "🛡️ T블럭 타격! 공격 기회가 소멸되었습니다.");
             } else {
                 if (hitType === 'T' && type === 'SNIPE') {
                     io.to(currentRoom).emit('systemMsg', "🛡️ T블럭 타격! (저격 능력이므로 턴이 유지됩니다.)");
                 }
-                // 🚨 저격 타격 명중 시 isDestroyed 추가
                 io.to(currentRoom).emit('attackResult', { attacker: socket.id, attackIndex, targetIndex, hit: true, nextTurn: socket.id, isDestroyed: justDestroyed });
             }
 
@@ -345,14 +343,12 @@ io.on('connection', (socket) => {
             if (bombTriggered) {
                 io.to(currentRoom).emit('systemMsg', `🚨 경보! 지뢰(💣) 피격! 공격자 진영에 3x3 융단 폭격이 가해집니다!`);
 
-                // 공격자의 진영 기준 좌표(attackIndex)를 중심으로 3x3 범위를 가져옴
                 const explosionArea = get3x3Area(targetIndex);
 
                 explosionArea.forEach(expIdx => {
                     let isHit = false;
                     let counterDestroyed = false; // 🚨 폭탄 반사 데미지로 유닛이 죽었는지 확인
                     
-                    // 공격자의 유닛들을 확인하여 타격 판정 (내 살 깎아먹기)
                     attacker.units.forEach(u => {
                         if (u.cells.includes(expIdx)) {
                             isHit = true;
@@ -361,7 +357,6 @@ io.on('connection', (socket) => {
                                 u.hitCells.push(expIdx);
                                 u.isHit = true;
 
-                                // 반사 데미지로 아군 함선이 박살 났다면?
                                 if (u.cells.length === u.hitCells.length) {
                                     counterDestroyed = true;
                                 }
@@ -369,7 +364,6 @@ io.on('connection', (socket) => {
                         }
                     });
 
-                    // 9번의 카운터 폭격을 각각 전송!
                     io.to(currentRoom).emit('attackResult', {
                         attacker: opponent.id, 
                         attackIndex: 139 - expIdx,
@@ -377,9 +371,20 @@ io.on('connection', (socket) => {
                         hit: isHit,
                         blocked: false,
                         isBomb: expIdx === targetIndex,
-                        isDestroyed: counterDestroyed // 🚨 폭탄 반사뎀으로 내 배가 터져도 이펙트 발동!
+                        isDestroyed: counterDestroyed 
                     });
                 });
+            }
+        } 
+        else {
+            // 🌊 허공에 빗나갔을 때 (🚨🚨 형님, 제가 미쳐가지고 날려먹었던 오발 코드입니다!!! 🚨🚨)
+            if (type === 'SNIPE') {
+                io.to(currentRoom).emit('attackResult', { attacker: socket.id, attackIndex, targetIndex, hit: false, nextTurn: socket.id });
+                socket.emit('systemMsg', "🔫 저격 빗나감! (턴 유지)");
+            } else {
+                room.phraseCount++;
+                io.to(currentRoom).emit('attackResult', { attacker: socket.id, attackIndex, targetIndex, hit: false, nextTurn: opponent.id });
+                passTurn(room, opponent.id);
             }
         }
 
