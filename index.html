@@ -1113,6 +1113,17 @@
             border-radius: 50%;
         }
 
+        #wreckCanvas {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            pointer-events: none; /* 마우스 클릭 방해 금지 */
+            z-index: 9999; /* 화면 최상단에 배치 */
+        }
+    
+
     </style>
 </head>
 <body>
@@ -1315,6 +1326,7 @@
         </div>
         <div id="scope-layer"></div>
             <div id="reticle"><div id="center-dot"></div></div>
+        <canvas id="wreckCanvas"></canvas>
     </div>
 
     <script src="/socket.io/socket.io.js"></script>
@@ -2087,6 +2099,18 @@
                     
                     if (c === selected1x1Idx) cells[c].classList.add('moving-1x1');
                 });
+
+                // 🚨 [신규 추가] 내 유닛 전손(파괴) 이펙트 1회성 트리거
+                const isAlive = u.cells.length > (u.hitCells ? u.hitCells.length : 0);
+                const unitSig = 'my_' + u.type; // 고유 서명으로 중복 폭발 방지
+                if (!isAlive && !explodedUnitsTracker.has(unitSig)) {
+                    explodedUnitsTracker.add(unitSig);
+                    
+                    // 파괴된 유닛의 정중앙 좌표를 구해서 폭발시킴
+                    const centerCell = u.cells[Math.floor(u.cells.length / 2)];
+                    const coords = getCellCoords('my-grid', centerCell);
+                    createWreckExplosion(coords.x, coords.y);
+                }
             });
 
             opponentMisses.forEach(idx => {
@@ -2347,6 +2371,108 @@
             addGameLog("[알림] 배치 초기화 완료");
         }
 
+        // =========================================
+        // 💥 유닛 전손(Wreck) 고속 파편 엔진 (Canvas)
+        // =========================================
+        let explodedUnitsTracker = new Set(); // 한 번 폭발한 유닛을 기억하는 추적기
+
+        const canvasWreck = document.getElementById('wreckCanvas');
+        const ctxWreck = canvasWreck.getContext('2d');
+
+        function resizeWreck() {
+            canvasWreck.width = window.innerWidth;
+            canvasWreck.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resizeWreck);
+        resizeWreck();
+
+        let wreckParticles = [];
+
+        class WreckParticle {
+            constructor(x, y, type) {
+                this.x = x;
+                this.y = y;
+                this.type = type;
+                this.life = 1.0; 
+                
+                const angle = Math.random() * Math.PI * 2;
+                let speedMultiplier = 3;
+                let baseSpeed = type === 'debris' ? Math.random() * 12 + 8 : Math.random() * 5 + 2;
+                const speed = baseSpeed * speedMultiplier;
+                
+                this.vx = Math.cos(angle) * speed;
+                this.vy = Math.sin(angle) * speed;
+                
+                if (type === 'explosion') {
+                    this.size = Math.random() * 8 + 4;
+                    this.decay = (Math.random() * 0.05 + 0.04) * 2.5; 
+                    this.color = `hsla(${Math.random() * 40 + 10}, 100%, 60%,`;
+                } else if (type === 'debris') {
+                    this.size = Math.random() * 4 + 1;
+                    this.decay = (Math.random() * 0.02 + 0.01) * 2.5;
+                    this.color = `hsla(0, 0%, 85%,`;
+                } else { 
+                    this.size = Math.random() * 15 + 10;
+                    this.decay = (Math.random() * 0.015 + 0.005) * 2.0; 
+                    this.color = `hsla(0, 0%, 50%,`;
+                }
+            }
+
+            draw() {
+                ctxWreck.save();
+                ctxWreck.beginPath();
+                ctxWreck.globalAlpha = this.life;
+                
+                if (this.type === 'debris') {
+                    ctxWreck.rect(this.x, this.y, this.size, this.size);
+                } else {
+                    ctxWreck.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                }
+                
+                ctxWreck.fillStyle = this.color + '1)'; 
+                ctxWreck.fill();
+                ctxWreck.restore();
+            }
+
+            update() {
+                this.x += this.vx;
+                this.y += this.vy;
+                this.life -= this.decay; 
+                
+                if (this.type === 'smoke') {
+                    this.size += 0.4; 
+                    this.vy -= 0.05; 
+                }
+                this.vx *= 0.94;
+                this.vy *= 0.94;
+            }
+        }
+
+        function createWreckExplosion(x, y) {
+            for (let i = 0; i < 20; i++) wreckParticles.push(new WreckParticle(x, y, 'explosion'));
+            for (let i = 0; i < 40; i++) wreckParticles.push(new WreckParticle(x, y, 'debris'));
+            for (let i = 0; i < 30; i++) wreckParticles.push(new WreckParticle(x, y, 'smoke'));
+        }
+
+        function animateWreck() {
+            // 🚨 화면을 까맣게 덮지 않으면서 잔상(Motion Blur)만 남기는 투명 캔버스 지우기 기법 적용
+            ctxWreck.globalCompositeOperation = 'destination-out';
+            ctxWreck.fillStyle = 'rgba(0, 0, 0, 0.4)';
+            ctxWreck.fillRect(0, 0, canvasWreck.width, canvasWreck.height);
+            ctxWreck.globalCompositeOperation = 'source-over';
+
+            for (let i = wreckParticles.length - 1; i >= 0; i--) {
+                wreckParticles[i].update();
+                wreckParticles[i].draw();
+                
+                if (wreckParticles[i].life <= 0) {
+                    wreckParticles.splice(i, 1);
+                }
+            }
+            requestAnimationFrame(animateWreck);
+        }
+        animateWreck(); // 루프 시작
+
         function handleButtonClick() {
             const btn = document.getElementById('start-btn');
             const txt = btn.innerText.trim();
@@ -2465,6 +2591,7 @@
                 // 2. 내 유닛 정보 및 빗나간 기록 등 내부 데이터도 완벽 초기화
                 myUnits = [];
                 opponentMisses = [];
+                explodedUnitsTracker.clear(); // 🚨 [신규 추가] 전손 기록 완벽 초기화!
             }
 
             // 🎁 보급 상자 화면 렌더링
@@ -2615,6 +2742,16 @@
                             if (u.hitCells && u.hitCells.includes(c)) myCells[c].classList.add('hit-unit');
                         }
                     });
+
+                    // 🚨 [신규 추가] P1 유닛 전손 폭발 (관전자용)
+                    const isAlive = u.cells.length > (u.hitCells ? u.hitCells.length : 0);
+                    const unitSig = 'p1_' + u.type;
+                    if (!isAlive && !explodedUnitsTracker.has(unitSig)) {
+                        explodedUnitsTracker.add(unitSig);
+                        const centerCell = u.cells[Math.floor(u.cells.length / 2)];
+                        const coords = getCellCoords('my-grid', centerCell);
+                        createWreckExplosion(coords.x, coords.y);
+                    }
                 });
             }
 
@@ -2629,6 +2766,16 @@
                             if (u.hitCells && u.hitCells.includes(c)) oppCells[mirrorIdx].classList.add('hit-unit');
                         }
                     });
+
+                    // 🚨 [신규 추가] P2 유닛 전손 폭발 (관전자용)
+                    const isAlive = u.cells.length > (u.hitCells ? u.hitCells.length : 0);
+                    const unitSig = 'p2_' + u.type;
+                    if (!isAlive && !explodedUnitsTracker.has(unitSig)) {
+                        explodedUnitsTracker.add(unitSig);
+                        const mirrorIdx = 139 - u.cells[Math.floor(u.cells.length / 2)];
+                        const coords = getCellCoords('opponent-grid', mirrorIdx);
+                        createWreckExplosion(coords.x, coords.y);
+                    }
                 });
             }
         }
@@ -2944,6 +3091,7 @@
             inventory = { 'ㄷ':1, 'L':1, 'T':1, 'ㅗ':1, 'I':1, '1x1':1, '1x2':1, '📦':1, '💣':1 };
 
             opponentMisses = []; // 🚨 [추가] 새 게임이 시작되면 빗나간 기록도 초기화!
+            explodedUnitsTracker.clear(); // 🚨 [신규 추가] 전손 기록 초기화!
             
             initGrids(); 
             renderInventory(); 
