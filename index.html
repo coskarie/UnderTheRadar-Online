@@ -2,1268 +2,3164 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>스틱맨 런앤건 PVE - 멀티플레이어 연동</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>블록 찾기: 언더 더 레이더(Under the Radar)</title>
+    <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@300;400;500;600;700&amp;family=Noto+Sans+KR:wght@300;400;500;700;900&amp;family=Inconsolata:wght@400;700&amp;display=swap" rel="stylesheet">
     <style>
-        body {
-            margin: 0;
-            overflow: hidden;
-            background-color: #222;
+        body { font-family: 'Noto Sans KR', sans-serif; display: flex; flex-direction: column; height: 100vh; margin: 0; background: #000000; overflow: hidden; }
+        #login-screen { 
+            position: fixed; 
+            inset: 0; 
+            display: flex; 
+            flex-direction: column; 
+            align-items: center; 
+            justify-content: center; 
+            z-index: 1000; 
+            /* 배경 이미지가 사라지는 하단 바닥색 (흰색으로 유지) */
+            background-color: rgb(0, 0, 0); 
+        }
+
+        /* 2. 🚨 배경 이미지 전용 (페이드 아웃 담당) */
+        #login-screen::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            
+            /* 원본의 0.6 투명도 필터와 이미지를 그대로 가져옴 */
+            background: linear-gradient(rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.3)), 
+                        url('Title_Img.png') no-repeat center top; /* 말림 방지용 top 고정 */
+            background-size: cover;
+
+            /* 🌟 상단은 100% 보이고, 하단으로 갈수록 투명해지는 마스크 */
+            -webkit-mask-image: linear-gradient(to bottom, black 5%, transparent 50%);
+            mask-image: linear-gradient(to bottom, black 5%, transparent 90%);
+            
+            /* 마스크 크기를 배경과 일치시킴 */
+            -webkit-mask-size: 100% 100%;
+            mask-size: 100% 100%;
+
+            z-index: -1; /* 입력창(h1, input 등)보다 뒤로 보냄 */
+        }
+
+        #main-game { font-family: 'Inconsolata', monospace; display: none; flex: 1; padding: 10px; gap: 15px; overflow-y: auto; 
+        background: linear-gradient(rgba(0, 0, 0, 0.7), rgba(0, 0, 0, 0.7)), 
+                url('Steal_Back.png') no-repeat center center;
+        background-size: cover; /* 이미지가 화면에 꽉 차게 */
+        background-attachment: fixed; /* 스크롤해도 배경은 고정 (간지 포인트) */
+        }
+
+        /* 🌟 네온 후광이 흘러가는 애니메이션 */
+        @keyframes sparkle {
+            from { background-position: 0% 100%; }
+            to { background-position: 200% 100%; }
+        }
+
+        /* 🎯 3층 (최상단): 글자 영역 & 버튼 틀 */
+        #join-btn {
+            position: relative;
+            background: transparent !important; /* 본체 배경은 아예 투명하게 비웁니다 */
+            color: #032709 !important; /* 글자는 녹색 */
+            
+            border: none;
+            padding: 12px 30px;
+            font-size: 1.1em;
+            cursor: pointer;
+            font-weight: 900;
+            z-index: 10;
+        }
+
+        /* ✨ 1층 (최하단): 가장 밑에 깔리는 네온 후광 장판 */
+        #join-btn::before {
+            content: '';
+            position: absolute;
+            inset: -4px; /* 버튼 크기보다 4px 삐져나오게 설정 (테두리 역할) */
+            border-radius: 6px;
+            z-index: -2; /* 가장 밑바닥으로 보냄 */
+            
+            background: linear-gradient(
+                90deg,
+                #7fef81 0%, #a1ca1a 11%, #316106 22%, #29fc04 33%,
+                #3bff1d 44%, #406e0c 55%, #1c862c 66%, #70ff1e 77%,
+                #126906 88%, #7FEFBD 100%
+            );
+            background-size: 300% 100%;
+            animation: sparkle 4s infinite linear;
+            filter: blur(4px);
+        }
+
+        /* 🛡️ 2층 (중간): 네온을 덮어버리는 완벽한 흰색 뚜껑 */
+        #join-btn::after {
+            content: '';
+            position: absolute;
+            inset: 0; /* 버튼 본체 크기에 딱 맞춤 */
+            border-radius: 4px;
+            background: #0fa40f !important; /* 완벽한 흰색 뚜껑 */
+            z-index: -1; /* 네온(-2)보다 위에, 글자보단 아래에 배치! */
+        }
+
+        /* 🎬 타이틀 전용 깜빡임 애니메이션 키프레임 */
+        @keyframes flashLight {
+            to { opacity: 1; }
+        }
+        @keyframes flashDark {
+            to { opacity: 0.7; }
+        }
+
+        /* 📦 타이틀 전체 정렬용 컨테이너 */
+        .title-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin-bottom: 30px;
+            text-align: center;
+        }
+
+        /* 🔝 상단 영문 부제 */
+        .title-top {
+            color: #a0c0a4;
+            font-size: 1rem;
+            letter-spacing: 8px;
+            margin-bottom: -10px;
+            z-index: 2;
+            font-family: 'Rajdhani', sans-serif;
+        }
+
+        /* 🎯 메인 타이틀 기본 설정 */
+        .neon-title {
+            margin: 10px 0;
+            font-size: 3em; 
+            color: rgb(255, 255, 255);
+            text-shadow: 0 0 15px rgba(0,0,0,0.5);
+        }
+
+        /* ✨ 메인 타이틀: 밝게 터지는 효과 ("언더 더 레이더") */
+        .neon-title .flicker-light {
+            position: relative;
+            display: inline-block;
+        }
+        .neon-title .flicker-light::before {
+            content: "";
+            position: absolute;
+            left: 0;
+            top: -10%;
+            width: 100%;
+            height: 120%;
+            background: #e0ffd7;
+            filter: blur(12px);
+            opacity: 0;
+            animation: flashLight 0.4s ease-out alternate infinite;
+            z-index: -1;
+        }
+
+        /* ⬇️ 하단 영문 캐치프레이즈 묶음 */
+        .title-bottom {
+            display: flex;
+            flex-direction: column;
+            color: #8a9ba8;
+            font-size: 0.9rem;
+            letter-spacing: 3px;
+            font-style: italic;
+            line-height: 1.4;
+            margin-top: 5px;
+        }
+
+        /* 💡 하단 영문 3줄: 어둡게 고장 난 듯 지지직거리는 효과 */
+        .title-bottom .flicker-dark {
+            opacity: 0.1;
+            animation: flashDark 0.4s ease-out alternate infinite;
+            display: block; /* 줄바꿈 유지 */
+        }
+
+        .login-content {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        /* 💀 2. 텍스트 제목(strong) 디자인 (작고 얇게, 자간 넓게) */
+        .right-panel strong {
+            display: flex;
+            justify-content: space-between; /* 양쪽 정렬용 */
+            font-size: 0.75rem;
+            letter-spacing: 0.1em;
+            color: rgba(248, 113, 113, 0.8);
+            margin-bottom: 8px;
+            padding-bottom: 4px;
+            border-bottom: 1px solid rgba(127, 29, 29, 0.3); /* 제목 아래 얇은 선 */
+        }
+
+        .log-area, .chat-area {
+            background-color: rgba(20, 0, 0, 0.5); 
+            border: 1px solid rgba(220, 38, 38, 0.2);
+            border-radius: 4px;
+            padding: 8px;
+            margin-bottom: 15px;
+            height: 200px;
+            overflow-y: auto; 
+        }
+
+        .log-area::-webkit-scrollbar, .chat-area::-webkit-scrollbar {
+            width: 4px;
+        }
+        .log-area::-webkit-scrollbar-thumb, .chat-area::-webkit-scrollbar-thumb {
+            background: rgba(220, 38, 38, 0.5);
+            border-radius: 2px;
+        }
+
+        /* 💀 5. 채팅 입력창 & 버튼 테마 */
+        .chat-input-group input {
+            background-color: rgba(0, 0, 0, 0.6);
+            border: 1px solid rgba(220, 38, 38, 0.5);
+            color: rgb(255, 255, 255);
+            border-radius: 4px;
+            outline: none;
+        }
+        .chat-input-group input:focus {
+            border-color: #ef4444; /* 클릭하면 테두리 밝아짐 */
+        }
+
+        .chat-input-group button, .user-list-box button {
+            background-color: rgba(69, 10, 10, 0.5);
+            border: 1px solid rgba(220, 38, 38, 0.6);
+            color: #f87171;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .chat-input-group button:hover, .user-list-box button:hover {
+            background-color: rgba(127, 29, 29, 0.5);
+            border-color: #ef4444;
+            color: #fca5a5;
+        }
+
+        /* 💀 6. 접속자 명단 박스 여백 조절 */
+        .user-list-box {
+            border-top: 1px solid rgba(127, 29, 29, 0.3);
+            padding-top: 10px;
+        }
+        .log-area, .chat-area { flex: 1; background: rgba(31, 22, 22, 0.483); border: 1px solid #ce2d2d; overflow-y: auto; padding: 10px; font-size: 0.85em; border-radius: 5px; }
+
+
+
+
+        /* 주요 패널 */
+        .left-panel { 
+            flex: 2; display: flex; flex-direction: column; 
+            gap: 8px; /* 기존 12px에서 8px로 축소 */
+            padding: 15px 20px; /* 위아래 패딩을 줄여서 바닥 공간 확보 */
+            background: rgba(8, 0, 0, 0.95); 
+            border: 1px solid rgba(44, 220, 38, 0.2); 
+            border-radius: 4px; position: relative;
+            box-shadow: inset 0 0 20px rgba(46, 204, 113, 0.05);
+            overflow-y: auto; /* 만약 화면이 작아도 스크롤되게 보호 */
+        }
+        .right-panel {
+            flex: 1; display: flex; flex-direction: column; gap: 10px; min-width: 250px;
+            background-color: rgba(0, 0, 0, 0.9);
+            border: 1px solid rgba(220, 38, 38, 0.5); 
+            border-radius: 8px;
+            box-shadow: 0 4px 15px rgba(127, 29, 29, 0.4);
+            padding: 16px;
+            color: rgb(255, 255, 255);
+            font-family: 'Arial', sans-serif;
+            /* (width, 위치 등 기존 레이아웃 설정이 있다면 여기에 합쳐주세요) */
+        }
+        .name-label { font-size: 1.1em; font-weight: bold; display: flex; align-items: center; gap: 8px; margin: 2px 0; color: rgb(255, 255, 255); margin-bottom: 1%; margin-left: 15px;}
+        .v-mark { color: #4CAF50; font-weight: 900; display: none; align-self: center; line-height: 1; white-space: nowrap; margin-top: -2px; }
+
+        /* 1. 🧱 공통 뼈대 (크기, 격자 칸수, 테두리 등은 그대로 공유) */
+        .grid { 
+            position: absolute;
+            inset: 0; /* top:0, left:0, right:0, bottom:0 과 동일 (래퍼에 완벽히 꽉 참) */
+            width: 100%; 
+            height: 100%; 
+            margin: 0; 
+            border: 2px solid #62ff00; 
+            display: grid; 
+            grid-template-columns: repeat(14, 1fr); 
+            grid-template-rows: repeat(10, 1fr); 
+            box-sizing: border-box; 
+        }
+
+        /* 2. 🎯 상대방 격자판 전용 (Grid1.jpg) */
+        #opponent-grid {
+            position: absolute; /* 부모 래퍼를 기준으로 띄움 */
+            top: 0; left: 0; right: 0; bottom: 0; /* 상하좌우 여백 없이 쫙 폄 */
+            width: 100% !important; 
+            height: 100% !important;
+            margin: auto !important; /* 중앙 정렬 쐐기박기 */
+            
+            background: linear-gradient(rgba(125, 125, 125, 0), rgba(0, 0, 0, 0)), 
+                        url('Grid1.jpg') no-repeat center center;
+            background-size: cover; 
+        }
+
+        /* 3. 🛡️ 내 격자판 전용 (Grid2.jpg) */
+        #my-grid {
+            background: linear-gradient(rgba(125, 125, 125, 0.054), rgba(0, 0, 0, 0.036)), 
+                        url('Grid2.jpg') no-repeat center center;
+            background-size: cover; 
+        }
+        .grid div { border: 0.1px solid #7cffa1aa; cursor: pointer; box-sizing: border-box; }
+        
+        .my-unit { background: #16bd16 !important; border: 1px solid #e4e4e4 !important; }
+        .hit-unit { background: #e74c3c !important; border: 1px solid #c0392b !important; }
+        .miss-cell { background: #5a6364 !important; }
+        .sniper-line { background: rgba(0, 225, 255, 0.211) !important; border: 1px dashed #000000 !important; }
+
+        /* 🚨 강철 상자 전용 갈색 CSS 추가 */
+        .box-unit { background: #452a24 !important; border: 1px solid #5d4037 !important; }
+        /* 🚨 시각적 마스터키 CSS 완벽 구현 🚨 */
+        .ghost { background: rgba(46, 204, 113, 0.4); } 
+        .ghost-purple { background: rgba(155, 89, 182, 0.6); } /* 움직이는 보라색 유닛 */
+        .ghost-original { background: rgba(255, 255, 255, 0.6); border: 2px dashed #ecf0f1 !important; } /* 제자리 흰색 껍데기 */
+        .ghost-invalid { background: rgba(231, 76, 60, 0.4); }
+
+        .inventory { display: flex; gap: 5px; flex-wrap: wrap; background: #f5daa9; padding: 5px; border-radius: 5px; margin-bottom: 5px; min-height: 5px; }
+        .unit-btn { padding: 6px 10px; border: 1px solid #333; cursor: pointer; background: white; font-weight: bold; font-size: 0.85em; }
+        .unit-btn.active { background: #f26419; color: white; border-color: #421c07; }
+        
+        button { cursor: pointer; border-radius: 4px; border: 1px solid #999; font-weight: bold; }
+        .ctrl-group {display: flex; gap: 10px; justify-content: center; margin: 5px 0; flex-shrink: 0;}
+        #start-btn, .sub-btn { flex: 1; max-width: 250px; padding: 6px 15px; font-family: 'Rajdhani', 'Noto Sans KR', sans-serif; font-size: 0.85rem;
+            font-weight: 700; text-transform: uppercase; border-radius: 0px; cursor: pointer; transition: all 0.3s ease; }
+        #start-btn { background: rgba(5, 20, 10, 0.9); color: #09ff00; border: 1px solid #2ecc71; }
+        #start-btn:hover:not(:disabled) { /* 🔥 마우스 올렸을 때 (호버): 너무 밝아지지 않고 은은하게 빛남 */
+            background: rgba(12, 56, 31, 0.8); 
+            box-shadow: 0 0 15px rgba(9, 255, 0, 0.4);
+        }
+        #start-btn:disabled { 
+            background: rgba(0, 0, 0, 0.6); 
+            color: #444; 
+            border-color: #333; 
+            cursor: not-allowed;
+            box-shadow: none;
+        }
+        .sub-btn { 
+            background: rgba(251, 133, 0, 0.1) !important; 
+            color: #fb8500 !important; 
+            border: 1px solid #fb8500 !important; 
+        }
+        .sub-btn:hover {
+            background: rgba(251, 133, 0, 0.3) !important;
+            box-shadow: 0 0 10px rgba(251, 133, 0, 0.3);
+        }
+        
+        .chat-input-group { display: flex; gap: 5px; }
+        .user-list-box { background: #000000; padding: 10px; border-radius: 5px; font-size: 0.9em; display: flex; flex-direction: column; gap: 5px; }
+        .my-turn-border { 
+            /* border를 4px로 바꾸면 격자 안쪽 공간이 줄어들어 칸이 찌그러집니다. 
+            두께는 2px로 유지하되, 레이아웃에 영향을 안 주는 'outline'과 '그림자'로 시각 효과만 극대화! */
+            border-color: #ff3333 !important; 
+            outline: 2px solid #ff3333 !important; /* 바깥쪽에 2px 선 추가 (레이아웃 안 밀림) */
+            outline-offset: 0px;
+            box-shadow: 0 0 15px rgba(255, 51, 51, 0.8), inset 0 0 10px rgba(255, 51, 51, 0.5) !important;
+        }
+
+        .action-panel {display: none; gap: 10px; margin: 5px 0 5px 0; flex-shrink: 0; }
+        .action-btn {flex: 1; padding: 5px 10px; background: rgba(8, 0, 0, 0.8); border: 1px solid rgba(255, 255, 255, 0.15); color: rgba(255, 255, 255, 0.5); font-family: 'Rajdhani', 'Noto Sans KR', sans-serif; 
+        font-size: 0.85rem; font-weight: 700; letter-spacing: 1px; border-radius: 0px; cursor: pointer; transition: all 0.3s ease; text-transform: uppercase; }
+        .action-btn:hover:not(:disabled) {border-color: rgba(12, 56, 31, 0.2); ; color: #2ecc71; background: rgba(46, 204, 113, 0.05); }
+        .action-btn.active {background: rgba(231, 76, 60, 0.15); color: #e74c3c; border: 1px solid #e74c3c; box-shadow: inset 0 0 10px rgba(231, 76, 60, 0.2); text-shadow: 0 0 5px rgba(231, 76, 60, 0.5);}
+        .action-btn:disabled {background: rgba(255, 255, 255, 0.02) !important; border-color: rgba(255, 255, 255, 0.05) !important; color: rgba(255, 255, 255, 0.1) !important;
+            cursor: not-allowed; box-shadow: none !important; text-shadow: none !important; }
+        #fuel-display {display: none; font-weight: bold; color: #2980b9; font-size: 1.1em; background: #d6eaf8; padding: 5px; border-radius: 4px; text-align: center; }
+        .moving-1x1 {box-shadow: 0 0 10px 3px #9b59b6 inset !important; } /* 선택된 1x1 유닛 시각 효과 */
+
+        #scope-layer {position: fixed; pointer-events: none; display: none; z-index: 4000; transform: translate(-50%, -50%); width: 200vw; height: 200vh; backdrop-filter: blur(10px) grayscale(1);
+            -webkit-mask-image: radial-gradient(circle 100px at center, transparent 100%, black 100%); mask-image: radial-gradient(circle 100px at center, transparent 100%, black 100%); -webkit-mask-repeat: no-repeat; mask-repeat: no-repeat; }
+        #reticle {position: fixed; top: 50%; left: 50%; width: 200px; height: 200px; transform: translate(-50%, -50%); border: 2px solid #ff0000; border-radius: 50%; pointer-events: none; display: none; z-index: 4001; box-shadow: 0 0 15px #ff0000;}
+        #reticle::before {content: ''; position: absolute; top: 50%; left: 50%; width: 100vw; height: 2px; background: rgba(255, 0, 0, 0.6); box-shadow: 0 0 8px #ff0000; transform: translate(-50%, -50%); }
+        #reticle::after {content: ''; position: absolute; left: 50%; top: 50%; width: 2px; height: 100vh; background: rgba(255, 0, 0, 0.6); box-shadow: 0 0 8px #ff0000; transform: translate(-50%, -50%); }
+        #center-dot {position: absolute; top: 50%; left: 50%; width: 6px; height: 6px; background: #ff0000; border-radius: 50%; transform: translate(-50%, -50%); box-shadow: 0 0 10px #ff0000; z-index: 4002; }
+        .hit {
+            position: absolute; width: 100px; height: 100px;
+            background: radial-gradient(circle, #fff, #ff0000, transparent);
+            border-radius: 50%; transform: translate(-50%, -50%);
+            animation: bang 0.3s forwards; z-index: 4003; pointer-events: none;
+        }
+        @keyframes bang { from { transform: translate(-50%, -50%) scale(0); opacity: 1; } to { transform: translate(-50%, -50%) scale(2); opacity: 0; } }
+
+        .particle {
+            position: absolute; background: #ff0000; border-radius: 50%;
+            pointer-events: none; z-index: 4004; animation: fly 0.6s ease-out forwards;
+        }
+        @keyframes fly {
+            0% { transform: translate(-50%, -50%) translate(0, 0) scale(1); opacity: 1; }
+            100% { transform: translate(-50%, -50%) translate(var(--tx), var(--ty)) scale(0); opacity: 0; }
+        }
+
+        .action-btn:disabled {
+            background: #555555 !important; 
+            color: #888888 !important;
+            cursor: not-allowed;      
+            border-color: #444444 !important;
+            opacity: 0.5;              
+            box-shadow: none !important;   
+        }
+
+        /* 🌫️ [신규 추가] 상대방 격자판 전장의 안개 (Fog of War) */
+        .fogwrapper {
+            position: absolute;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            filter: grayscale(0.2) saturate(1.2) sepia(0.2);
+            
+            /* 💡 조준경(4000)보단 아래, 격자판 바닥보단 위 */
+            z-index: 5; 
+            pointer-events: none; /* 🚨 필수: 안개가 클릭을 막지 않게 통과시킴 */
+            overflow: hidden; /* 🚨 필수: 안개가 격자판 밖으로 새어나가지 않게 자름 */
+            border-radius: 0px; /* 에지 이미지를 쓴다면 테두리에 맞게 조절하세요 */
+        }
+
+        /* 💠 모서리 브라켓 디자인 (공통) */
+        .panel-bracket {
+            position: absolute; width: 15px; height: 15px; 
+            border-color: rgba(46, 204, 113, 0.4); border-style: solid; 
+            pointer-events: none;
+        }
+        .bracket-tl { top: 0; left: 0; border-width: 3px 0 0 3px; }
+        .bracket-br { bottom: 0; right: 0; border-width: 0 3px 3px 0; }
+
+        /* 🏷️ 이름표 및 레이블 스타일 (Rajdhani 폰트 적용) */
+        .name-label { 
+            font-family: 'Rajdhani', sans-serif;
+            font-size: 0.9rem; font-weight: 700; 
+            letter-spacing: 2px; color: #2ecc71; 
+            border-bottom: 1px solid rgba(46, 204, 113, 0.2);
+            padding-bottom: 8px; margin: 5px 0 10px 0;
+            text-transform: uppercase;
+        }
+
+        /* ⛽ 연료창 & 프레이즈창 디자인 (카드 형태) */
+        #fuel-display, #phrase-display {
+            background: rgba(46, 204, 113, 0.03);
+            border: 1px solid rgba(46, 204, 113, 0.1);
+            padding: 10px; font-family: 'Inconsolata', monospace;
+            border-radius: 2px;
+        }
+
+        /* 📦 인벤토리 & 액션 패널 (카드 테마) */
+        .inventory, .action-panel {
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            padding: 15px; border-radius: 2px;
+        }
+
+        /* 🎯 그리드 에지 보완 (그리드가 공중에 떠보이지 않게) */
+        .grid-container-wrapper {
+            background: rgba(0, 0, 0, 0.4);
+            border: 1px solid rgba(46, 204, 113, 0.3);
+            padding: 8px;
+            position: relative;
+            width: 100%; 
+            height: 220px; 
+            box-sizing: border-box;
+            flex-shrink: 0;
+        }
+
+        #foglayer_01, #foglayer_02, #foglayer_03 { height: 100%; position: absolute; width: 200%; }
+
+        #foglayer_01 .image01, #foglayer_01 .image02,
+        #foglayer_02 .image01, #foglayer_02 .image02,
+        #foglayer_03 .image01, #foglayer_03 .image02 { float: left; height: 100%; width: 50%; }
+
+        /* 안개 이미지 소스 */
+        #foglayer_01 .image01, #foglayer_01 .image02 { background: url("https://raw.githubusercontent.com/danielstuart14/CSS_FOG_ANIMATION/master/fog1.png") center center/cover no-repeat transparent; }
+        #foglayer_02 .image01, #foglayer_02 .image02,
+        #foglayer_03 .image01, #foglayer_03 .image02 { background: url("https://raw.githubusercontent.com/danielstuart14/CSS_FOG_ANIMATION/master/fog2.png") center center/cover no-repeat transparent; }
+
+        /* 애니메이션 키프레임 */
+        #foglayer_01 { animation: foglayer_01_opacity 10s linear infinite, foglayer_moveme 15s linear infinite; }
+        #foglayer_02, #foglayer_03 { animation: foglayer_02_opacity 21s linear infinite, foglayer_moveme 13s linear infinite; }
+
+        @keyframes foglayer_01_opacity { 
+            0% { opacity: 0.5; } 22% { opacity: 0.9; } 40% { opacity: 0.6; } 
+            58% { opacity: 0.8; } 80% { opacity: 0.5; } 100% { opacity: 0.5; } 
+        }
+        @keyframes foglayer_02_opacity { 
+            0% { opacity: 0.7; } 25% { opacity: 0.4; } 50% { opacity: 0.5; } 
+            80% { opacity: 0.8; } 100% { opacity: 0.7; } 
+        }
+        @keyframes foglayer_03_opacity { 
+            0% { opacity: 1.0; } 27% { opacity: 0.6; } 52% { opacity: 0.9; } 
+            68% { opacity: 0.7; } 100% { opacity: 1.0; } 
+        }
+        @keyframes foglayer_moveme { 0% { left: 0; } 100% { left: -100%; } }
+        
+
+        /* 💥 [신규 추가] 거친 파편 폭발 이펙트 (ATTACK 전용) */
+        .fragment {
+            position: fixed; /* 마우스 좌표(clientX/Y)와 완벽 일치시키기 위해 fixed 사용 */
+            background: #fff; 
+            width: 8px; height: 8px;
+            clip-path: polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%); 
+            pointer-events: none;
+            opacity: 0;
+            transform-origin: center;
+            z-index: 5000; /* 안개나 조준경 위로 터지도록 최상단 배치 */
+        }
+
+        .trail {
+            position: fixed;
+            background: rgba(255, 165, 0, 0.6); 
+            width: 4px; height: 4px;
+            border-radius: 50%;
+            pointer-events: none;
+            opacity: 0;
+            transform-origin: center;
+            z-index: 4999;
+        }
+
+        @keyframes flyAway {
+            0% { transform: translate(-50%, -50%) rotate(0deg) scale(1); opacity: 1; }
+            50% { background: #ff4500; } 
+            100% { transform: translate(var(--tx), var(--ty)) rotate(var(--tr)) scale(0); opacity: 0; }
+        }
+
+        @keyframes trailFade {
+            0% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+            100% { transform: translate(var(--tx), var(--ty)) scale(0.1); opacity: 0; }
+        }
+        /* 🎁 보급 상자 네온 디자인 */
+        .bonus-box { 
+            background: #f1c40f !important; 
+            box-shadow: inset 0 0 15px #ffeb3b, 0 0 10px #f1c40f !important;
+            border: 1px solid #fff !important;
+            animation: boxPulse 1.5s infinite alternate;
+            z-index: 10;
+        }
+        @keyframes boxPulse { from { opacity: 0.6; } to { opacity: 1; } }
+
+        /* 🛡️ T블럭 방어막(Shield) 이펙트 */
+        .shield-block { position: relative; overflow: visible; }
+        .shield-block::after {
+            content: ''; position: absolute; top: -50%; left: -50%; right: -50%; bottom: -50%;
+            background: radial-gradient(circle, rgba(0, 225, 255, 0.4), transparent 70%);
+            border: 2px solid #00e1ff; border-radius: 8px;
+            box-shadow: 0 0 20px #00e1ff, inset 0 0 15px #00e1ff;
+            animation: shieldPulse 0.5s ease-out forwards; pointer-events: none; z-index: 2000;
+        }
+        @keyframes shieldPulse {
+            0% { transform: scale(0.3); opacity: 1; }
+            50% { transform: scale(1.1); opacity: 0.9; background: radial-gradient(circle, rgba(0, 225, 255, 0.8), transparent 60%); }
+            100% { transform: scale(1.2); opacity: 0; }
+        }
+
+        /* 🏃 기동함선 2칸 이동 가능 구역 홀로그램 */
+        .move-highlight {
+            background: rgba(46, 204, 113, 0.2) !important;
+            border: 1px dashed #2ecc71 !important;
+            box-shadow: inset 0 0 15px rgba(46, 204, 113, 0.4);
+            animation: movePulse 1.5s infinite alternate;
+        }
+        @keyframes movePulse {
+            from { background: rgba(46, 204, 113, 0.1); }
+            to { background: rgba(46, 204, 113, 0.3); }
+        }
+
+
+        /* 📋 유닛 설명창 디자인 */
+        .unit-desc-panel {
+            position: relative;
+            background: rgba(46, 204, 113, 0.03); /* 아주 연한 녹색 광택 */
+            border: 1px solid rgba(46, 204, 113, 0.2);
+            padding: 12px 15px;
+            margin-top: 10px;
+            min-height: 60px;
+            display: none; /* 배치 단계에서만 보이게 처리 */
+            box-sizing: border-box;
+        }
+
+        .desc-title {
+            font-family: 'Rajdhani', sans-serif;
+            font-size: 0.8rem;
+            color: #2ecc71;
+            font-weight: 700;
+            letter-spacing: 1.5px;
+            margin-bottom: 5px;
+            text-transform: uppercase;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .desc-title::before {
+            content: '■';
+            font-size: 0.6rem;
+        }
+
+        .desc-body {
+            font-family: 'Noto Sans KR', sans-serif;
+            font-size: 0.85rem;
+            color: #a0c0a4;
+            line-height: 1.4;
+            word-break: keep-all;
+        }
+
+        .radar-flash {
+            position: relative;
+            overflow: visible;
+        }
+        .radar-flash::after {
+            content: ''; position: absolute; inset: -5px;
+            background: radial-gradient(circle, rgba(255, 0, 0, 0.8), transparent 70%);
+            border: 2px solid #ff0000;
+            border-radius: 5px;
+            box-shadow: 0 0 20px #ff0000, inset 0 0 15px #ff0000;
+            animation: radarPulse 0.4s ease-out 3; /* 3번 강렬하게 삐슝! 삐슝! 깜빡임 */
+            pointer-events: none; z-index: 3000;
+        }
+        @keyframes radarPulse {
+            0% { transform: scale(0.5); opacity: 1; }
+            100% { transform: scale(1.5); opacity: 0; }
+        }
+
+        /* =========================================
+           🎬 전술 오버레이 (ENGAGE SYSTEM) 이펙트 
+           ========================================= */
+        :root {
+            --color-tactical-red: #d30000;
+            --color-bg-deep: #050506;
+        }
+
+        /* 🚨 left-panel 내부에 꽉 차게 변경 (fixed -> absolute) */
+        #startOverlay {
+            position: absolute;
+            inset: 0;
+            background-color: var(--color-bg-deep);
+            z-index: 9999;
             display: flex;
             justify-content: center;
             align-items: center;
-            height: 100vh;
-            font-family: 'Arial', sans-serif;
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 1.2s cubic-bezier(0.4, 0, 0.2, 1), visibility 1.2s;
+            overflow: hidden;
+            border-radius: 4px; /* left-panel 테두리 둥글기에 맞춤 */
         }
-        
-        /* 로그인 스크린 UI */
-        #loginScreen {
-            position: absolute;
-            top: 0; left: 0; width: 100%; height: 100%;
-            background-color: #222;
+
+        #startOverlay.active {
+            opacity: 1;
+            visibility: visible;
+            transition: opacity 0.4s ease-out;
+        }
+
+        /* 십자선 */
+        .screen-line { position: absolute; background: var(--color-tactical-red); opacity: 0; z-index: 1001; }
+        .line-h { width: 100%; height: 1px; left: 0; top: 50%; transform: scaleX(0); }
+        .line-v { width: 1px; height: 100%; top: 0; left: 50%; transform: scaleY(0); }
+        .active .line-h { animation: line-h-tactical 2.5s forwards; }
+        .active .line-v { animation: line-v-tactical 2.5s forwards; }
+
+        @keyframes line-h-tactical {
+            0% { transform: scaleX(0); opacity: 0; }
+            15% { transform: scaleX(1); opacity: 0.8; }
+            80% { transform: scaleX(1); opacity: 0.3; } 
+            100% { transform: scaleX(1.1); opacity: 0; }
+        }
+        @keyframes line-v-tactical {
+            0% { transform: scaleY(0); opacity: 0; }
+            15% { transform: scaleY(1); opacity: 0.8; }
+            80% { transform: scaleY(1); opacity: 0.3; }
+            100% { transform: scaleY(1.1); opacity: 0; }
+        }
+
+        /* 조준경 브래킷 */
+        .hud-container { position: relative; width: 240px; height: 240px; display: flex; justify-content: center; align-items: center; z-index: 1002; }
+        .radar-corner { position: absolute; width: 40px; height: 40px; border: 1px solid var(--color-tactical-red); opacity: 0; }
+        .top-left { top: 0; left: 0; border-right: 0; border-bottom: 0; --tw-translate-x: -80px; --tw-translate-y: -80px; }
+        .top-right { top: 0; right: 0; border-left: 0; border-bottom: 0; --tw-translate-x: 80px; --tw-translate-y: -80px; }
+        .bottom-left { bottom: 0; left: 0; border-right: 0; border-top: 0; --tw-translate-x: -80px; --tw-translate-y: 80px; }
+        .bottom-right { bottom: 0; right: 0; border-left: 0; border-top: 0; --tw-translate-x: 80px; --tw-translate-y: 80px; }
+
+        .active .radar-corner { animation: radar-corner-scatter 2.5s cubic-bezier(0.19, 1, 0.22, 1) forwards; }
+        @keyframes radar-corner-scatter {
+            0% { transform: scale(3) translate(0, 0); opacity: 0; }
+            20% { transform: scale(1) translate(0, 0); opacity: 1; }
+            80% { transform: scale(1.05) translate(0, 0); opacity: 0.8; filter: blur(0px); }
+            100% { transform: scale(1.1) translate(var(--tw-translate-x), var(--tw-translate-y)); opacity: 0; filter: blur(4px); }
+        }
+
+        /* 텍스트 페이드 */
+        .start-msg {
+            font-family: 'Rajdhani', monospace; /* 기존 폰트와 통일 */
+            font-size: 1.2rem; font-weight: 700; color: var(--color-tactical-red);
+            letter-spacing: 0.4em; text-transform: uppercase; opacity: 0; z-index: 1003; text-align: center;
+        }
+        .active .start-msg { animation: text-steady-fade 2.5s ease-in-out forwards; }
+        @keyframes text-steady-fade {
+            0% { opacity: 0; transform: translateY(5px); }
+            20% { opacity: 1; transform: translateY(0); }
+            80% { opacity: 1; transform: translateY(0); filter: blur(0); }
+            100% { opacity: 0; transform: translateY(-5px); filter: blur(4px); }
+        }
+
+        .flash-1x1 {
+            animation: whiteFlash 0.6s ease-out forwards;
+        }
+        @keyframes whiteFlash {
+            0% { 
+                background: rgba(255, 255, 255, 0.9) !important; 
+                box-shadow: 0 0 20px 5px rgba(255, 255, 255, 0.8) inset, 0 0 15px rgba(255, 255, 255, 0.8);
+                transform: scale(1.1); 
+                z-index: 100;
+            }
+            100% { 
+                background: #16bd16 !important; /* 원래 내 유닛 색깔로 복귀 */
+                box-shadow: none;
+                transform: scale(1);
+            }
+        }
+
+        @keyframes gridShake {
+            0% { transform: translate(1px, 1px) rotate(0deg); }
+            10% { transform: translate(-1px, -2px) rotate(-1deg); }
+            20% { transform: translate(-3px, 0px) rotate(1deg); }
+            30% { transform: translate(3px, 2px) rotate(0deg); }
+            40% { transform: translate(1px, -1px) rotate(1deg); }
+            50% { transform: translate(-1px, 2px) rotate(-1deg); }
+            60% { transform: translate(-3px, 1px) rotate(0deg); }
+            70% { transform: translate(3px, 1px) rotate(-1deg); }
+            80% { transform: translate(-1px, -1px) rotate(1deg); }
+            90% { transform: translate(1px, 2px) rotate(0deg); }
+            100% { transform: translate(0px, 0px) rotate(0deg); }
+        }
+
+        .shaking {
+            animation: gridShake 0.4s cubic-bezier(.36,.07,.19,.97) both;
+        }
+
+        .bomb-unit { 
+            background: #ff3300 !important; 
+            border: 1px solid #ffaa00 !important; 
+            box-shadow: 0 0 10px #ff3300 inset !important; 
+            animation: bombPulse 1s infinite alternate; 
+        }
+        @keyframes bombPulse { 
+            from { filter: brightness(1); } 
+            to { filter: brightness(1.8); box-shadow: 0 0 20px #ff3300 inset !important; } 
+        }
+
+        /* =========================================
+           🚀 전술 미사일 폭격 이펙트 (Tactical Strike)
+           ========================================= */
+        .reticle {
+            position: fixed; width: 80px; height: 80px;
+            border: 1px solid rgba(0, 255, 0, 0.15); border-radius: 50%;
+            transform: translate(-50%, -50%); opacity: 0; pointer-events: none;
+            z-index: 6000; display: flex; justify-content: center; align-items: center;
+        }
+        .reticle::before { content: ''; position: absolute; width: 100px; height: 1px; background: rgba(0, 255, 0, 0.4); }
+        .reticle::after { content: ''; position: absolute; width: 1px; height: 100px; background: rgba(0, 255, 0, 0.4); }
+
+        .scan-percent {
+            position: absolute; right: -45px; bottom: -25px;
+            color: #00ff00; font-family: 'Inconsolata', monospace; font-size: 14px; font-weight: bold;
+            text-shadow: 0 0 5px rgba(0, 255, 0, 0.8); pointer-events: none;
+        }
+
+        .marks-container { position: absolute; width: 100%; height: 100%; pointer-events: none; }
+        .mark { position: absolute; background: rgba(0, 255, 0, 0.4); }
+        .h-mark { width: 1px; height: 6px; top: 50%; transform: translateY(-50%); }
+        .triangle-container {
+            position: absolute; width: 100%; height: 100%;
+            animation: lock-on-rotate 0.25s cubic-bezier(0.15, 0.85, 0.35, 1) forwards;
+        }
+        .tri { position: absolute; width: 0; height: 0; border-left: 5px solid transparent; border-right: 5px solid transparent; border-bottom: 10px solid #00ff00; }
+        .tri-top { top: -25px; left: 50%; transform: translateX(-50%) rotate(180deg); }
+        .tri-bottom { bottom: -25px; left: 50%; transform: translateX(-50%) rotate(0deg); }
+        .tri-left { left: -25px; top: 50%; transform: translateY(-50%) rotate(90deg); }
+        .tri-right { right: -25px; top: 50%; transform: translateY(-50%) rotate(-90deg); }
+
+        @keyframes lock-on-rotate { 0% { transform: rotate(0deg) scale(1.8); opacity: 0; } 100% { transform: rotate(360deg) scale(1); opacity: 1; } }
+        .reticle.active { opacity: 1; }
+
+        .missile {
+            position: fixed; width: 30px; height: 6px; background: linear-gradient(90deg, #eee, #999);
+            border-radius: 3px; box-shadow: 0 0 15px rgba(255, 200, 100, 0.8);
+            z-index: 6001; transform-origin: center; pointer-events: none;
+        }
+        .missile::after {
+            content: ''; position: absolute; left: -15px; top: 0; width: 15px; height: 100%;
+            background: #ffcc00; filter: blur(3px); border-radius: 50% 0 0 50%;
+        }
+        .trail-dot {
+            position: fixed; width: 3px; height: 3px; background-color: rgba(150, 150, 150, 0.4);
+            border-radius: 50%; pointer-events: none; z-index: 5999;
+        }
+        .missile-explosion {
+            position: fixed; width: 5px; height: 5px; background: #fff; border-radius: 50%;
+            pointer-events: none; z-index: 6002;
+            box-shadow: 0 0 30px 15px #fff, 0 0 60px 30px #ff4500, 0 0 100px 50px #ffcc00;
+            transform: translate(-50%, -50%);
+        }
+        @keyframes explode-anim { 0% { transform: translate(-50%, -50%) scale(1); opacity: 1; } 100% { transform: translate(-50%, -50%) scale(15); opacity: 0; } }
+        @keyframes shake-screen { 0%, 100% { transform: translate(0, 0); } 25% { transform: translate(-5px, 5px); } 50% { transform: translate(5px, -5px); } 75% { transform: translate(-5px, -5px); } }
+        .shake-active { animation: shake-screen 0.1s linear infinite; }
+
+        /* =========================================
+           🚨 자동 레이더 경고 (L블럭) 이펙트 CSS
+           ========================================= */
+        #auto-radar-overlay {
+            position: fixed;
+            inset: 0;
+            z-index: 9999;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background: rgba(255, 0, 0, 0.15); /* 피격당한 듯한 붉은 틴트 */
+            pointer-events: none;
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.3s ease-out, visibility 0.3s;
+        }
+
+        #auto-radar-overlay.active {
+            opacity: 1;
+            visibility: visible;
+        }
+
+        .radar-alert-box {
+            border: 2px solid #ff0000;
+            background: rgba(10, 0, 0, 0.95);
+            box-shadow: 0 0 40px rgba(255, 0, 0, 0.6), inset 0 0 20px rgba(255, 0, 0, 0.4);
+            padding: 30px 60px;
+            text-align: center;
+            transform: scale(0.5);
+            transition: transform 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            border-radius: 4px;
+        }
+
+        #auto-radar-overlay.active .radar-alert-box {
+            transform: scale(1);
+        }
+
+        .alert-title {
+            color: #ff3333;
+            font-family: 'Rajdhani', sans-serif;
+            letter-spacing: 8px;
+            font-size: 2.5rem;
+            font-weight: 900;
+            margin: 0 0 10px 0;
+            text-shadow: 0 0 15px #ff0000;
+        }
+
+        .alert-desc {
+            color: #ffffff;
+            font-family: 'Noto Sans KR', sans-serif;
+            font-size: 1.2rem;
+            margin: 0;
+            letter-spacing: 2px;
+        }
+
+        /* ==========================================
+           🚨 승리 / 패배 모션 전용 CSS
+           ========================================== */
+        :root {
+            --neon-green: #00ff66;
+            --tactical-red: #ff3333;
+        }
+
+        #victory-screen, #defeat-screen {
+            position: fixed;
+            inset: 0;
             display: flex;
             flex-direction: column;
             justify-content: center;
             align-items: center;
-            z-index: 100;
-            color: white;
-        }
-        #loginScreen h1 {
-            font-size: 50px;
-            margin-bottom: 40px;
-            text-shadow: 2px 2px 0 #000;
-        }
-        .input-group {
-            margin-bottom: 20px;
-            text-align: center;
-        }
-        .input-group input {
-            font-size: 24px;
-            padding: 15px;
-            width: 300px;
-            text-align: center;
-            border-radius: 8px;
-            border: none;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
-            outline: none;
-        }
-        #loginScreen button {
-            font-size: 24px;
-            padding: 15px 60px;
-            margin-top: 20px;
-            cursor: pointer;
-            border-radius: 8px;
-            border: none;
-            background-color: #d4af37;
-            font-weight: bold;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
-            transition: background-color 0.2s;
-        }
-        #loginScreen button:hover {
-            background-color: #b5952f;
+            z-index: 9999;
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 1.5s cubic-bezier(0.4, 0, 0.2, 1), visibility 1.5s;
+            pointer-events: none; /* 화면 클릭 방해 방지 */
         }
 
-        /* 게임 캔버스 및 UI (초기에는 숨김) */
-        canvas {
-            background-color: #ffffff; 
-            box-shadow: 0 0 15px rgba(0,0,0,0.8);
-            display: none; 
+        #victory-screen { background: radial-gradient(circle, #0a1a0f 0%, #000 100%); }
+        #defeat-screen { background: radial-gradient(circle, #1a0a0a 0%, #000 100%); }
+
+        #victory-screen.active, #defeat-screen.active {
+            opacity: 1;
+            visibility: visible;
+            transition: opacity 0.1s ease-out;
+            pointer-events: auto;
         }
-        #ui {
+
+        /* 대각선 브라켓 */
+        .corner-bracket {
             position: absolute;
-            top: 20px;
-            left: 20px;
-            color: black;
-            font-weight: bold;
-            font-size: 20px;
-            pointer-events: none;
-            background: rgba(255,255,255,0.8);
-            padding: 15px;
-            border-radius: 8px;
-            line-height: 1.6;
-            display: none; 
-            z-index: 10;
-        }
-        #alertUI {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            color: red;
-            font-weight: bold;
-            font-size: 40px;
-            pointer-events: none;
-            text-shadow: 2px 2px 0 #000;
+            width: 60px;
+            height: 60px;
             opacity: 0;
-            transition: opacity 0.2s;
-            z-index: 10;
+            z-index: 1005;
         }
+        #victory-screen .corner-bracket { border: 3px solid var(--neon-green); }
+        #defeat-screen .corner-bracket { border: 3px solid var(--tactical-red); }
+
+        #victory-screen .bracket-tl, #defeat-screen .bracket-tl { top: 15%; left: 15%; border-right: 0; border-bottom: 0; }
+        #victory-screen .bracket-tr, #defeat-screen .bracket-tr { top: 15%; right: 15%; border-left: 0; border-bottom: 0; }
+        #victory-screen .bracket-bl, #defeat-screen .bracket-bl { bottom: 15%; left: 15%; border-right: 0; border-top: 0; }
+        #victory-screen .bracket-br, #defeat-screen .bracket-br { bottom: 15%; right: 15%; border-left: 0; border-top: 0; }
+
+        .active .corner-bracket { animation: bracket-flicker-in 4.5s cubic-bezier(0.19, 1, 0.22, 1) forwards; }
+
+        @keyframes bracket-flicker-in {
+            0% { transform: scale(2); opacity: 0; }
+            10% { opacity: 1; transform: scale(1); }
+            15% { opacity: 0.3; }
+            20% { opacity: 1; }
+            25% { opacity: 0.4; }
+            30%, 85% { opacity: 1; transform: scale(1); }
+            100% { opacity: 0; transform: scale(1.5); filter: blur(10px); }
+        }
+
+        /* 전술 스캔 라인 */
+        .scan-line { position: absolute; opacity: 0; }
+        #victory-screen .scan-line { background: var(--neon-green); box-shadow: 0 0 20px var(--neon-green); }
+        #defeat-screen .scan-line { background: var(--tactical-red); box-shadow: 0 0 20px var(--tactical-red); }
+
+        .line-h { width: 100%; height: 1px; left: 0; top: 50%; transform: scaleX(0); }
+        .line-v { width: 1px; height: 100%; top: 0; left: 50%; transform: translateX(-50%); }
+
+        .active .line-h { animation: line-expand-h 4.5s forwards; }
+        .active .line-v { animation: line-expand-v 4.5s forwards; }
+
+        @keyframes line-expand-h {
+            0% { transform: scaleX(0); opacity: 1; }
+            10% { transform: scaleX(1); opacity: 1; height: 4px; }
+            85% { transform: scaleX(1); opacity: 0.3; height: 1px; }
+            100% { transform: scaleX(1.2); opacity: 0; }
+        }
+        @keyframes line-expand-v {
+            0% { transform: scaleY(0); opacity: 1; }
+            10% { transform: scaleY(1); opacity: 1; width: 4px; }
+            85% { transform: scaleY(1); opacity: 0.3; width: 1px; }
+            100% { transform: scaleY(1.2); opacity: 0; }
+        }
+
+        /* 타이포그래피 */
+        .result-title { text-align: center; z-index: 100; perspective: 1000px; }
+        .mission-text {
+            font-size: 5rem; color: #fff; letter-spacing: 2.5rem; text-transform: uppercase;
+            margin-bottom: -1rem; opacity: 0;
+        }
+        .active .mission-text { animation: text-exit-left 4.5s cubic-bezier(0.17, 0.84, 0.44, 1) forwards; }
+
+        @keyframes text-exit-left {
+            0% { opacity: 0; transform: translateZ(200px); letter-spacing: 2.5rem; }
+            15%, 85% { opacity: 1; transform: translateZ(0) translateX(0); letter-spacing: 1rem; }
+            100% { opacity: 0; transform: translateX(-400px) skewX(30deg); filter: blur(15px); }
+        }
+
+        .status-text { font-size: 8rem; letter-spacing: 1.5rem; text-transform: uppercase; font-weight: 900; opacity: 0; }
+        #victory-screen .status-text { color: var(--neon-green); }
+        #defeat-screen .status-text { color: var(--tactical-red); }
+
+        .active .status-text { animation: text-exit-right 4.5s cubic-bezier(0.17, 0.84, 0.44, 1) forwards; }
+
+        @keyframes text-exit-right {
+            0% { opacity: 0; filter: blur(10px); transform: scale(0.8); }
+            20%, 85% { opacity: 1; filter: blur(0); transform: scale(1) translateX(0); }
+            100% { opacity: 0; transform: translateX(400px) skewX(-30deg); filter: blur(20px); }
+        }
+
+        /* 하단 데이터 스트림 */
+        .data-stream {
+            position: absolute; bottom: 50px; font-family: 'Inconsolata', monospace;
+            font-size: 0.9rem; letter-spacing: 3px; opacity: 0;
+        }
+        #victory-screen .data-stream { color: var(--neon-green); }
+        #defeat-screen .data-stream { color: var(--tactical-red); }
+
+        .active .data-stream { animation: fade-in-out 4.5s forwards; }
+        @keyframes fade-in-out {
+            0% { opacity: 0; }
+            15%, 85% { opacity: 0.6; }
+            100% { opacity: 0; }
+        }
+        
+        @keyframes shield-flash {
+            0% { background-color: rgba(0, 255, 255, 0); box-shadow: 0 0 0px rgba(0, 255, 255, 0); }
+            20% { background-color: rgba(0, 255, 255, 0.6); box-shadow: 0 0 15px rgba(0, 255, 255, 0.8); }
+            100% { background-color: rgba(0, 255, 255, 0); box-shadow: 0 0 0px rgba(0, 255, 255, 0); }
+        }
+        .flash-shield {
+            animation: shield-flash 0.8s ease-out forwards;
+            border-left: 2px solid rgba(0, 255, 255, 0.8) !important;
+            border-right: 2px solid rgba(0, 255, 255, 0.8) !important;
+        }
+
+        /* 🌟 [A기능] 마우스 오버 시 내 유닛 전체가 밝게 빛나는 효과 */
+        .hover-highlight {
+            filter: brightness(1.8) drop-shadow(0 0 8px #2ecc71) !important;
+            z-index: 10;
+            position: relative;
+        }
+
+        /* 📋 [B기능] 오른쪽 패널 로그창을 덮는 유닛 정보 팝업창 */
+        .right-panel { position: relative; } /* 🚨 기존 .right-panel 클래스에 이 속성이 없으면 팝업이 엉뚱한데 뜹니다! */
+        
+        #in-game-unit-popup {
+            position: absolute;
+            top: 40px; /* '📊 게임 로그' 글자 바로 아래에 맞춰 덮음 */
+            left: 16px;
+            right: 16px;
+            height: 200px; /* 로그창 높이와 동일하게 설정 */
+            background: rgba(5, 10, 5, 0.95);
+            border: 1px solid #2ecc71;
+            border-radius: 4px;
+            padding: 15px;
+            z-index: 100;
+            box-shadow: 0 0 20px rgba(46, 204, 113, 0.4);
+            display: none; /* 평소엔 숨김 */
+            flex-direction: column;
+            gap: 10px;
+            backdrop-filter: blur(5px);
+        }
+        
+        .popup-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid rgba(46, 204, 113, 0.3);
+            padding-bottom: 8px;
+            color: #2ecc71;
+            font-family: 'Rajdhani', sans-serif;
+            font-size: 1.1em;
+            font-weight: 900;
+            letter-spacing: 1px;
+        }
+        
+        .popup-close-btn {
+            background: transparent;
+            border: none;
+            color: #e74c3c;
+            font-size: 1.2em;
+            font-weight: bold;
+            cursor: pointer;
+            transition: 0.2s;
+        }
+        .popup-close-btn:hover { color: #ff6b6b; transform: scale(1.1); }
+        
+        #popup-desc {
+            color: #a0c0a4;
+            font-family: 'Noto Sans KR', sans-serif;
+            font-size: 0.9rem;
+            line-height: 1.5;
+            word-break: keep-all;
+        }
+        .passive-shield-glass {
+            position: relative; /* ::after를 덮어씌우기 위한 기준점 */
+        }
+        .passive-shield-glass::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            pointer-events: none; /* 마우스 클릭 방해 금지 */
+            z-index: 5; /* 유닛 배경색 위에 덮어씌워짐 */
+            
+            /* ✨ 대각선 유리 광택 느낌을 주는 그라데이션 */
+            background: linear-gradient(135deg, 
+                rgba(255, 255, 255, 0) 0%, 
+                rgba(255, 255, 255, 0.03) 40%, 
+                rgba(255, 255, 255, 0.2) 50%, 
+                rgba(255, 255, 255, 0.03) 60%, 
+                rgba(255, 255, 255, 0) 100%);
+                
+            /* 쉴드의 양옆 경계선 (홀로그램 엣지 느낌) */
+            border-left: 1px solid rgba(0, 225, 255, 0.3);
+            border-right: 1px solid rgba(0, 225, 255, 0.3);
+            box-shadow: inset 0 0 10px rgba(0, 225, 255, 0.1);
+            
+            /* 가끔씩 번쩍! 하는 애니메이션 적용 */
+            animation: shield-passive-blink 4s infinite;
+        }
+
+        /* ⚡ 평소엔 잔잔하다가 4초마다 한 번씩 하늘색으로 강하게 빛나는 애니메이션 */
+        @keyframes shield-passive-blink {
+            0%, 85% { 
+                background-color: rgba(0, 225, 255, 0.05); 
+                box-shadow: inset 0 0 10px rgba(0, 225, 255, 0.1);
+            }
+            92% { 
+                background-color: rgba(0, 225, 255, 0.25); 
+                box-shadow: inset 0 0 20px rgba(0, 225, 255, 0.6);
+            }
+            100% { 
+                background-color: rgba(0, 225, 255, 0.05); 
+                box-shadow: inset 0 0 10px rgba(0, 225, 255, 0.1);
+            }
+        }
+
+        /* =========================================
+           🚀 저격(Snipe) 시각 이펙트 CSS
+           ========================================= */
+        .snipe-bullet {
+            position: fixed;
+            width: 30px;
+            height: 4px;
+            background: linear-gradient(90deg, transparent, rgba(255, 100, 0, 0.8), #ffea00, #ffffff);
+            border-radius: 2px;
+            pointer-events: none;
+            z-index: 9000;
+            transform-origin: left center; 
+            box-shadow: 0 0 8px #ff6600, 0 0 15px #ffea00;
+        }
+
+        .firework-spark {
+            position: fixed;
+            pointer-events: none;
+            z-index: 9002;
+            border-radius: 50%;
+        }
+
+        #wreckCanvas {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            pointer-events: none; /* 마우스 클릭 방해 금지 */
+            z-index: 9999; /* 화면 최상단에 배치 */
+        }
+    
+
     </style>
 </head>
 <body>
+    <div id="auto-radar-overlay">
+        <div class="radar-alert-box">
+            <h2 class="alert-title">ENEMY DETECTED</h2>
+            <p class="alert-desc">적군의 함선이 포착되었습니다!</p>
+        </div>
+    </div>
+    <div id="login-screen">
+        <div class="login-bg-layer"></div>
 
-    <div id="loginScreen">
-        <h1>[ 스틱맨 총게임 ]</h1>
-        <div class="input-group">
-            <input type="text" id="playerNameInput" placeholder="이름을 입력하세요" autocomplete="off" maxlength="10">
+        <div class="login-content">
+            
+            <div class="title-container">
+                <div class="title-top" style="margin-top: 200px;">UNDER THE RADAR</div>
+                
+                <h1 class="neon-title">
+                    <span class="flicker-light">언더 더 레이더</span>
+                </h1>
+                
+                <div class="title-bottom">
+                    <span class="flicker-dark">One Step Ahead</span>
+                    <span class="flicker-dark">of the</span>
+                    <span class="flicker-dark">Unseen</span>
+                </div>
+            </div>
+            
+            <div style="margin-top: 40px; margin-bottom: 10px; display: flex; flex-direction: column; gap: 5px;">
+                <input type="text" id="name-input" placeholder="이름 입력" style="padding: 10px; width: 150px;">
+                <input type="number" id="room-input" placeholder="방 번호" style="padding: 10px; width: 150px;" value="1">
+            </div>
+            <button id="join-btn" onclick="joinGame()" style="margin-top: 25px;">입장하기</button>
         </div>
-        <div class="input-group">
-            <input type="number" id="roomNumberInput" placeholder="룸 번호 (1~9)" min="1" max="9">
-        </div>
-        <button id="startButton">입장하기</button>
     </div>
 
-    <div id="ui">
-        <div>플레이어: <span id="playerInfoUI" style="color: #2e8b57;">-</span></div>
-        <hr style="border: 1px solid #ccc; margin: 5px 0;">
-        <div>무기 (1~4, Q): <span id="currentWeaponUI" style="color: blue;">권총</span> <span id="ammoUI">[10 / 10]</span></div>
-        <div>소지금: <span id="moneyUI" style="color: #d4af37;">1500</span> $</div>
-        <div>진행 거리: <span id="distanceUI">0</span> m</div>
-        <div>체력: <span id="hpUI" style="color: red;">1250 / 1250</span></div>
+    <div id="victory-screen">
+        <div class="corner-bracket bracket-tl"></div>
+        <div class="corner-bracket bracket-tr"></div>
+        <div class="corner-bracket bracket-bl"></div>
+        <div class="corner-bracket bracket-br"></div>
+        <div class="scan-line line-h"></div>
+        <div class="scan-line line-v"></div>
+        <div class="result-title">
+            <div class="mission-text">Mission</div>
+            <div class="status-text">Complete</div>
+        </div>
+        <div class="data-stream">
+            &gt; ENEMY FLEET NEUTRALIZED // SECTOR_CLEAR [OK]<br>
+            &gt; SYSTEM_STATUS: VICTORY_CONFIRMED
+        </div>
     </div>
-    <div id="alertUI">돈이 부족합니다!</div>
-    
-    <canvas id="gameCanvas" width="1200" height="700"></canvas>
 
-<script src="/socket.io/socket.io.js"></script>
-<script>
-const canvas = document.getElementById('gameCanvas');
-const ctx = canvas.getContext('2d');
+    <div id="defeat-screen">
+        <div class="corner-bracket bracket-tl"></div>
+        <div class="corner-bracket bracket-tr"></div>
+        <div class="corner-bracket bracket-bl"></div>
+        <div class="corner-bracket bracket-br"></div>
+        <div class="scan-line line-h"></div>
+        <div class="scan-line line-v"></div>
+        <div class="result-title">
+            <div class="mission-text">Mission</div>
+            <div class="status-text">Failed</div>
+        </div>
+        <div class="data-stream">
+            &gt; CRITICAL DAMAGE DETECTED // UNIT_LOST [ERROR]<br>
+            &gt; SYSTEM_STATUS: OPERATION_TERMINATED
+        </div>
+    </div>
 
-// --- [추가] 멀티플레이어 소켓 설정 및 방장 시스템 ---
-const socket = io();
-const otherPlayers = {}; 
-let isHost = false; 
+    <div id="main-game">
+        <div class="left-panel">
+            <div id="startOverlay">
+                <div class="line-h screen-line"></div>
+                <div class="line-v screen-line"></div>
+                <div class="hud-container">
+                    <div class="radar-corner top-left"></div>
+                    <div class="radar-corner top-right"></div>
+                    <div class="radar-corner bottom-left"></div>
+                    <div class="radar-corner bottom-right"></div>
+                    <div class="start-msg">
+                        OPERATION INITIALIZED<br>
+                        <span style="font-size: 0.7rem; letter-spacing: 0.2em; opacity: 0.7;">SEARCHING UNDER THE RADAR...</span>
+                    </div>
+                </div>
+            </div>
 
-socket.on('initData', (data) => {
-    isHost = data.isHost;
-    if (isHost) document.getElementById('playerInfoUI').innerText += " (방장)";
-    data.players.forEach(p => {
-        if (p.id !== socket.id) otherPlayers[p.id] = p;
-    });
-});
+            <div class="panel-bracket bracket-tl"></div>
+            <div class="panel-bracket bracket-br"></div>
 
-socket.on('hostAssigned', () => {
-    isHost = true;
-    const currentText = document.getElementById('playerInfoUI').innerText;
-    if (!currentText.includes("(방장)")) {
-        document.getElementById('playerInfoUI').innerText += " (방장)";
-    }
-});
+            <div class="name-label">
+                <span id="opp-role" style="opacity:0.5;">● HOSTILE:</span> 
+                <span id="opp-name">대기 중</span> 
+                <span id="opp-v" class="v-mark" style="display: none;">[READY]</span>
+            </div>
 
-socket.on('newPlayer', (p) => { otherPlayers[p.id] = p; });
-socket.on('playerMoved', (data) => { if (otherPlayers[data.id]) otherPlayers[data.id] = data; });
-socket.on('playerDisconnected', (id) => { delete otherPlayers[id]; });
-socket.on('remoteBullet', (bData) => { bullets.push(bData); });
+            <div class="grid-container-wrapper">
+                <div style="position: relative; width: 100%; height: 100%;">
+                    <div id="opponent-grid" class="grid"></div>
+                    <div class="fogwrapper" style="position: absolute; inset: 0;">
+                        <div id="foglayer_01" class="fog"><div class="image01"></div><div class="image02"></div></div>
+                        <div id="foglayer_02" class="fog"><div class="image01"></div><div class="image02"></div></div>
+                        <div id="foglayer_03" class="fog"><div class="image01"></div><div class="image02"></div></div>
+                    </div>
+                </div>
+            </div>
 
-// 적 스폰 이벤트 수신 (내가 방장이어도 이 이벤트를 통해 적을 동기화하여 등록함)
-socket.on('enemySpawned', (eData) => {
-    enemies.push(eData);
-});
+            <div class="ctrl-group">
+                <button id="start-btn" onclick="handleButtonClick()">SYSTEM READY</button>
+                <button id="reset-btn" class="sub-btn" style="display: none; background:rgba(251, 133, 0, 0.2); border:1px solid #fb8500; color:#fb8500;" onclick="resetPlacement()">RESET 🧹</button>
+            </div>
+            
+            <div class="name-label">
+                <span id="my-role" style="opacity:0.5;">● COMMANDER:</span> 
+                <span id="my-name-display">대기 중</span> 
+                <span id="my-v" class="v-mark" style="display: none;">[READY]</span>
+            </div>
 
-// 다른 유저가 적을 맞췄을 때 체력 동기화
-socket.on('updateEnemyHp', ({ enemyId, damage }) => {
-    let e = enemies.find(en => en.id === enemyId);
-    if (e) e.hp -= damage;
-});
-// ------------------------------------
+            <div style="display: flex; gap: 10px; align-items: center;">
+                <div id="fuel-display" style="flex: 1; color: #2ecc71;">ENERGY: <span id="current-fuel">8</span> / <span id="max-fuel">8</span></div>
+                <div id="phrase-display" style="flex: 1; color: #2ecc71; text-align: right;">PHRASE: [ 1 ]</div>
+            </div>
 
-// --- 게임 상태 및 입력 ---
-const keys = {};
-const mouse = { x: 0, y: 0, isDown: false };
-let camX = 0; 
-let maxDistance = 0;
+            <div id="action-panel" class="action-panel">
+                <button id="btn-ATTACK" class="action-btn active" onclick="setActionMode('ATTACK')">🎯 ATTACK</button>
+                <button id="btn-SNIPE" class="action-btn" onclick="setActionMode('SNIPE')">🔫 SNIPE (-1)</button>
+                <button id="btn-MOVE" class="action-btn" onclick="setActionMode('MOVE')">🏃 MOVE (-2)</button>
+            </div>
 
-let isGameStarted = false; 
-let globalPlayerName = "";
-let globalRoomNumber = "";
+            <div class="grid-container-wrapper">
+                <div style="position: relative; width: 100%; height: 100%;">
+                    <div id="my-grid" class="grid" onmouseleave="clearGhost()"></div>
+                </div>
+            </div>
 
-window.addEventListener('keydown', e => { 
-    if (!isGameStarted) return; 
-    keys[e.key.toLowerCase()] = true; 
+            <div id="unit-inventory" class="inventory" style="display: flex; margin: 0; padding: 0;"></div>
 
-    if (e.key.toLowerCase() === 'r' && !player.isReloading) {
-        const wData = weapons[player.weapon];
-        if (player.ammo[player.weapon] < wData.maxAmmo) {
-            if (player.money >= wData.reloadCost) {
-                player.isReloading = true;
-                player.reloadStart = Date.now();
-                player.reloadProgress = 0;
-            } else {
-                const alertUI = document.getElementById('alertUI');
-                alertUI.style.opacity = 1;
-                setTimeout(() => { alertUI.style.opacity = 0; }, 1000);
-            }
-        }
-    }
-});
-window.addEventListener('keyup', e => { 
-    if (!isGameStarted) return;
-    keys[e.key.toLowerCase()] = false; 
-});
+            <div id="unit-description" class="unit-desc-panel">
+                <div class="panel-bracket bracket-tl"></div>
+                <div class="panel-bracket bracket-br"></div>
+                <div id="desc-title" class="desc-title">UNIT INFO: READY</div>
+                <div id="desc-body" class="desc-body">배치할 유닛을 선택하면 상세 제원이 이곳에 출력됩니다.</div>
+            </div>
+        </div>
 
-canvas.addEventListener('mousemove', e => {
-    if (!isGameStarted) return;
-    const rect = canvas.getBoundingClientRect();
-    mouse.x = e.clientX - rect.left;
-    mouse.y = e.clientY - rect.top;
-});
-canvas.addEventListener('mousedown', () => { 
-    if (!isGameStarted) return;
-    mouse.isDown = true; 
-    tryShoot(); 
-});
-canvas.addEventListener('mouseup', () => { 
-    if (!isGameStarted) return;
-    mouse.isDown = false; 
-});
+        <div class="right-panel">
+            <strong>📊 게임 로그</strong>
+            <div id="game-log" class="log-area"></div>
 
-const weaponNames = { pistol: '권총', machineGun: '기관총', shotgun: '샷건', sniper: '스나이퍼', shield: '방패' };
-const weaponColors = { pistol: 'black', machineGun: 'gray', shotgun: 'red', sniper: 'blue', shield: 'cyan' };
+            <div id="in-game-unit-popup">
+                <div class="popup-header">
+                    <span id="popup-title">UNIT INFO: </span>
+                    <button class="popup-close-btn" onclick="closeUnitPopup()">✕</button>
+                </div>
+                <div id="popup-desc">유닛 설명</div>
+            </div>
+            <style>
+            @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+            </style>
+            
+            <strong>
+                <span>💬 실시간 채팅</span>
+                <span style="font-size: 9px; color: rgba(239, 68, 68, 0.5); animation: pulse 2s infinite; font-weight: normal;">● LIVE</span>
+            </strong>
+            <div id="chat-log" class="chat-area"></div>
+            <div class="chat-input-group">
+                <input type="text" id="chat-input" style="flex:1; padding: 5px;" onkeypress="if(event.keyCode==13) sendChat()">
+                <button onclick="sendChat()" style="padding: 5px 15px;">전송</button>
+            </div>
 
-window.addEventListener('keydown', e => {
-    if (!isGameStarted) return;
-    if (['1','2','3','4','q'].includes(e.key.toLowerCase()) && !player.isReloading) {
-        if (e.key === '1') player.weapon = 'pistol';
-        if (e.key === '2') player.weapon = 'machineGun';
-        if (e.key === '3') player.weapon = 'shotgun';
-        if (e.key === '4') player.weapon = 'sniper';
-        if (e.key.toLowerCase() === 'q') player.weapon = 'shield';
-        
-        const uiSpan = document.getElementById('currentWeaponUI');
-        uiSpan.innerText = weaponNames[player.weapon];
-        uiSpan.style.color = weaponColors[player.weapon];
-    }
-});
+            <div class="user-list-box">
+                <strong>👥 접속자 명단</strong>
+                <div id="player-list">플레이어: </div>
+                <div id="spectator-list">관전자: </div>
+                <div style="display: flex; gap: 5px; margin-top: 5px;">
+                    <button onclick="changeRole('player')" style="flex:1; font-size: 0.8em; padding: 5px;">플레이어로 가기</button>
+                    <button onclick="changeRole('spectator')" style="flex:1; font-size: 0.8em; padding: 5px;">관전자로 가기</button>
+                </div>
+                    <button onclick="openManual()" 
+                                style="width:100%; background:#de28287e; color:#ffffffd9; margin-top:10px; border:none; padding:10px 20px; 
+                                    font-family:'Rajdhani', sans-serif; font-weight:900; cursor:pointer; border-radius:4px;
+                                    box-shadow: 0 0 10px rgba(46, 204, 113, 0.3); transition: 0.2s;
+                                    /* 💡 레이아웃: 아이콘과 텍스트 중앙 정렬 */
+                                    display: flex; align-items: center; justify-content: center; gap: 10px;">
+                        
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="opacity: 0.8;">
+                            <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 17h-2v-2h2v2zm2.07-7.75l-.9.92C13.45 12.9 13 13.5 13 15h-2v-.5c0-1.1.45-2.1 1.17-2.83l1.24-1.26c.37-.36.59-.86.59-1.41 0-1.1-.9-2-2-2s-2 .9-2 2H8c0-2.21 1.79-4 4-4s4 1.79 4 4c0 .88-.36 1.68-.93 2.25z" fill="#ffffffd9"/>
+                        </svg>
 
-// --- 데이터 설계 ---
-const weapons = {
-    pistol: { type: 'single', fireRate: 300, speed: 20, damage: 15, color: 'black', maxAmmo: 10, reloadCost: 0, reloadTime: 1000 },
-    machineGun: { type: 'auto', fireRate: 90, speed: 25, damage: 7, color: 'gray', maxAmmo: 50, reloadCost: 100, reloadTime: 2000 },
-    shotgun: { type: 'single', fireRate: 800, speed: 18, damage: 10, color: 'red', pellets: 6, spread: 35, maxAmmo: 5, reloadCost: 500, reloadTime: 3000 },
-    sniper: { type: 'single', fireRate: 1500, speed: 45, damage: 80, color: 'blue', minRange: 200, pierce: 3, maxAmmo: 8, reloadCost: 1000, reloadTime: 5000 },
-    shield: { type: 'shield', fireRate: 9999, speed: 0, damage: 0, color: 'cyan', maxAmmo: 50, reloadCost: 0, reloadTime: 1000 } 
-};
+                        OPERATIONAL MANUAL (게임 설명서 보기)
+                    </button>
+                </div>
+            </div>
 
-const player = {
-    x: 100, y: 300, vx: 0, vy: 0, speed: 6, jumpPower: -13, gravity: 0.7,
-    width: 20, height: 50, 
-    weapon: 'pistol', lastShot: 0, isGrounded: false,
-    walkTime: 0, shootTimer: 0,
-    money: 1500,
-    hp: 1250,      
-    maxHp: 1250,   
-    ammo: { pistol: 10, machineGun: 50, shotgun: 5, sniper: 8, shield: 50 },
-    isReloading: false,
-    reloadStart: 0,
-    reloadProgress: 0,
-    isCrouching: false,
-    crouchStamina: 180,    
-    maxCrouchStamina: 180,
-    aimAngle: 0 // [추가] 서버 전송용 조준 각도
-};
+            <div id="manual-layer" style="display:none; position:fixed; inset:0; z-index:5000; background:rgba(0,0,0,0.9); backdrop-filter:blur(5px);">
+                <div style="position:relative; width:95%; height:95%; margin:1.5% auto; border:1px solid #2ecc71; box-shadow: 0 0 30px rgba(46,204,113,0.3);">
+                    <iframe src="manual.html" id="manual-frame" style="width:100%; height:100%; border:none;"></iframe>
+                </div>
+            </div>
+        </div>
+        <div id="scope-layer"></div>
+            <div id="reticle"><div id="center-dot"></div></div>
+        <canvas id="wreckCanvas"></canvas>
+    </div>
 
-const bullets = [];
-const enemies = [];
-const sparks = []; 
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        const socket = (typeof io !== 'undefined') ? io() : { emit: ()=>{}, on: ()=>{} };
+        let myName = "", myRoom = "", myUnits = [], isMyTurn = false;
+        let opponentMisses = [];
 
-// --- 시드 기반 난수 생성기 (지형 동기화) ---
-let terrainSeed = 1;
-function seededRandom() {
-    let x = Math.sin(terrainSeed++) * 10000;
-    return x - Math.floor(x);
-}
+        let gameStatus = "LOBBY"; 
+        let selectedUnitType = null; 
+        let isPlayer = false; 
 
-const CHUNK_WIDTH = 800; 
-let terrainChunks = [];
-let lastPoint = { x: 0, y: 500 }; 
+        let actionMode = 'ATTACK';
+        let selected1x1Idx = -1; 
+        let movingOriginalState = null; 
 
-function initTerrain() {
-    terrainChunks = [];
-    lastPoint = { x: 0, y: 500 }; 
-    terrainChunks.push([ { x: 0, y: 500 }, { x: CHUNK_WIDTH, y: 500 } ]);
-    lastPoint = { x: CHUNK_WIDTH, y: 500 };
-}
+        let lastClickX = 0;
+        let lastClickY = 0;
+        let lastAttackType = 'ATTACK';
 
-function lerpY(x, p1, p2) {
-    return p1.y + (x - p1.x) / (p2.x - p1.x) * (p2.y - p1.y);
-}
+        let movingHitCells = []; // 본대 기동 시 유닛 피격 상태 보존용
+        let isFirstGameStart = true; // 최초 시작 오버레이 이펙트 제어용 플래그
 
-function generateTerrain() {
-    while (lastPoint.x < camX + canvas.width * 2) {
-        let startX = lastPoint.x;
-        let endX = startX + CHUNK_WIDTH;
-        
-        let macroPoints = [];
-        // 지형 생성에 Math.random() 대신 seededRandom() 사용
-        const type = Math.floor(seededRandom() * 3); 
-        const getNextY = (prevY) => Math.max(300, Math.min(650, prevY + (seededRandom() * 120) - 60));
-
-        if (type === 0) { 
-            macroPoints.push({ x: endX, y: getNextY(lastPoint.y) });
-        } else if (type === 1) { 
-            let midX = startX + CHUNK_WIDTH * (seededRandom() * 0.4 + 0.3);
-            let midY = getNextY(lastPoint.y);
-            macroPoints.push({ x: midX, y: midY });
-            macroPoints.push({ x: endX, y: getNextY(midY) });
-        } else { 
-            let mid1X = startX + CHUNK_WIDTH * 0.33;
-            let mid2X = startX + CHUNK_WIDTH * 0.66;
-            let mid1Y = getNextY(lastPoint.y);
-            let mid2Y = getNextY(mid1Y);
-            macroPoints.push({ x: mid1X, y: mid1Y });
-            macroPoints.push({ x: mid2X, y: mid2Y });
-            macroPoints.push({ x: endX, y: getNextY(mid2Y) });
-        }
-
-        let chunk = [{ x: startX, y: lastPoint.y }]; 
-        
-        for (let i = 0; i < macroPoints.length; i++) {
-            let p1 = chunk[chunk.length - 1]; 
-            let p2 = macroPoints[i];          
-            let segmentWidth = p2.x - p1.x;
-
-            if (segmentWidth > 300 && seededRandom() < 0.35) {
-                let subType = seededRandom() < 0.5 ? 'mountain' : 'hill';
-                let subWidth, peakHeight;
-
-                if (subType === 'mountain') {
-                    subWidth = Math.min(seededRandom() * 200 + 150, segmentWidth * 0.85);
-                    peakHeight = seededRandom() * 120 + 100; 
-                } else {
-                    subWidth = Math.min(seededRandom() * 400 + 300, segmentWidth * 0.95);
-                    peakHeight = seededRandom() * 60 + 50; 
-                }
-                
-                let subStartX = p1.x + (segmentWidth - subWidth) * seededRandom(); 
-                let subEndX = subStartX + subWidth;
-                
-                let subStartY = lerpY(subStartX, p1, p2);
-                let subEndY = lerpY(subEndX, p1, p2);
-
-                if (subType === 'mountain') {
-                    let midX = (subStartX + subEndX) / 2;
-                    let midY = lerpY(midX, p1, p2) - peakHeight; 
-                    
-                    chunk.push({ x: subStartX, y: subStartY }); 
-                    chunk.push({ x: midX, y: midY });           
-                    chunk.push({ x: subEndX, y: subEndY });     
-                } else {
-                    let mid1X = subStartX + subWidth * 0.2; 
-                    let mid2X = subStartX + subWidth * 0.8; 
-                    let mid1Y = lerpY(mid1X, p1, p2) - peakHeight;
-                    let mid2Y = lerpY(mid2X, p1, p2) - peakHeight;
-                    
-                    chunk.push({ x: subStartX, y: subStartY }); 
-                    chunk.push({ x: mid1X, y: mid1Y });         
-                    chunk.push({ x: mid2X, y: mid2Y });         
-                    chunk.push({ x: subEndX, y: subEndY });     
-                }
-            }
-            chunk.push(p2);
-        }
-        terrainChunks.push(chunk);
-        lastPoint = chunk[chunk.length - 1]; 
-    }
-
-    if (terrainChunks.length > 0 && terrainChunks[0][terrainChunks[0].length - 1].x < camX - 1000) {
-        terrainChunks.shift();
-    }
-}
-
-
-function getTerrainY(x) {
-    for (let chunk of terrainChunks) {
-        if (x >= chunk[0].x && x <= chunk[chunk.length - 1].x) {
-            for (let i = 0; i < chunk.length - 1; i++) {
-                let p1 = chunk[i];
-                let p2 = chunk[i+1];
-                if (x >= p1.x && x <= p2.x) {
-                    let ratio = (x - p1.x) / (p2.x - p1.x);
-                    return p1.y + ratio * (p2.y - p1.y);
-                }
-            }
-        }
-    }
-    return 2000; 
-}
-
-// --- 사격 및 투사체 ---
-function tryShoot() {
-    if (player.isReloading || player.ammo[player.weapon] <= 0 || player.weapon === 'shield') return;
-
-    const now = Date.now();
-    const wData = weapons[player.weapon];
-
-    if (now - player.lastShot >= wData.fireRate) {
-        player.lastShot = now;
-        player.shootTimer = 100; 
-        player.ammo[player.weapon]--;
-        
-        let shootY = player.isCrouching ? player.y - 23 : player.y - 38;
-        
-        const targetX = mouse.x + camX;
-        const targetY = mouse.y;
-        const angle = Math.atan2(targetY - shootY, targetX - player.x); 
-
-        if (player.weapon === 'shotgun') {
-            for (let i = 0; i < wData.pellets; i++) {
-                const spreadAngle = angle + (Math.random() - 0.5) * (wData.spread * Math.PI / 180);
-                spawnBullet(spreadAngle, wData, shootY);
-            }
-        } else {
-            spawnBullet(angle, wData, shootY);
-        }
-    }
-}
-
-function spawnBullet(angle, wData, shootY) {
-    const newBullet = {
-        x: player.x, 
-        y: shootY, 
-        vx: Math.cos(angle) * wData.speed,
-        vy: Math.sin(angle) * wData.speed,
-        damage: wData.damage,
-        color: wData.color,
-        distanceTraveled: 0,
-        weaponType: player.weapon,
-        pierceRemaining: wData.pierce || 0,
-        isEnemy: false
-    };
-    bullets.push(newBullet);
-
-    // [추가] 내가 쏜 총알 데이터를 서버로 전송
-    if (isGameStarted) {
-        socket.emit('shootBullet', newBullet);
-    }
-}
-
-// --- 게임 엔진 로직 ---
-let lastEnemySpawn = Date.now();
-
-function gameLoop() {
-    update();
-    draw();
-    if (isGameStarted) {
-        requestAnimationFrame(gameLoop);
-    }
-}
-
-// --- 메인 루프 (update) ---
-function update() {
-    generateTerrain();
-
-    // [추가] 서버 전송용 내 조준 각도 갱신
-    let shootY = player.isCrouching ? player.y - 23 : player.y - 38;
-    player.aimAngle = Math.atan2(mouse.y - shootY, (mouse.x + camX) - player.x);
-
-    // [추가] 서버로 내 상태 지속적 전송
-    if (isGameStarted) {
-        socket.emit('playerUpdate', {
-            x: player.x,
-            y: player.y,
-            weapon: player.weapon,
-            hp: player.hp,
-            maxHp: player.maxHp,
-            isCrouching: player.isCrouching,
-            aimAngle: player.aimAngle,
-            isReloading: player.isReloading,
-            vx: player.vx,
-            name: globalPlayerName,
-            shieldAmmo: player.ammo['shield'] 
-        });
-    }
-
-    for (let i = sparks.length - 1; i >= 0; i--) {
-        let s = sparks[i];
-        s.x += s.vx;
-        s.y += s.vy;
-        s.life -= 1;
-        if (s.life <= 0) sparks.splice(i, 1);
-    }
-
-    if (keys['s']) {
-        if (player.crouchStamina > 0) {
-            player.isCrouching = true;
-            player.crouchStamina -= 1; 
-        } else {
-            player.isCrouching = false; 
-        }
-    } else {
-        player.isCrouching = false;
-        if (player.crouchStamina < player.maxCrouchStamina) {
-            player.crouchStamina += 0.75; 
-            if (player.crouchStamina > player.maxCrouchStamina) {
-                player.crouchStamina = player.maxCrouchStamina;
-            }
-        }
-    }
-
-    if (player.isReloading) {
-        const wData = weapons[player.weapon];
-        const elapsed = Date.now() - player.reloadStart;
-        player.reloadProgress = Math.min(1, elapsed / wData.reloadTime);
-        
-        if (player.reloadProgress >= 1) {
-            player.money -= wData.reloadCost; 
-            player.ammo[player.weapon] = wData.maxAmmo; 
-            player.isReloading = false;
-        }
-    }
-
-    let currentSpeed = player.speed;
-    if (player.isCrouching) {
-        currentSpeed *= 0.2; 
-    }
-    if (player.isReloading) {
-        currentSpeed *= 0.6;
-    } else if (player.weapon === 'shield' && player.ammo['shield'] > 0) {
-        currentSpeed *= 0.7; 
-    }
-    
-    if (keys['a']) player.vx = -currentSpeed;
-    else if (keys['d']) player.vx = currentSpeed;
-    else player.vx = 0;
-
-    if (keys['w'] && player.isGrounded && !player.isCrouching) {
-        player.vy = player.jumpPower;
-        player.isGrounded = false;
-    }
-
-    if (mouse.isDown && player.weapon === 'machineGun') tryShoot();
-
-    player.vy += player.gravity;
-    player.x += player.vx;
-    player.y += player.vy;
-
-    const groundY = getTerrainY(player.x);
-    if (player.y >= groundY) {
-        player.y = groundY;
-        player.vy = 0;
-        player.isGrounded = true;
-    } else {
-        player.isGrounded = false;
-    }
-
-    if (player.isGrounded && Math.abs(player.vx) > 0.1 && !player.isCrouching) {
-        player.walkTime += (player.vx > 0 ? 0.2 : -0.2); 
-    } else if (player.isGrounded) {
-        player.walkTime = 0; 
-    }
-    if (player.shootTimer > 0) player.shootTimer -= 16;
-
-    camX = player.x - canvas.width / 4; 
-    if (player.x > maxDistance) {
-        maxDistance = player.x;
-        document.getElementById('distanceUI').innerText = Math.floor(maxDistance / 50);
-    }
-    
-    document.getElementById('ammoUI').innerText = `[${player.ammo[player.weapon]} / ${weapons[player.weapon].maxAmmo}]`;
-    document.getElementById('moneyUI').innerText = player.money;
-    document.getElementById('hpUI').innerText = `${Math.max(0, player.hp)} / ${player.maxHp}`; 
-
-    let currentMeters = Math.floor(maxDistance / 50);
-    let spawnCooldown = 5000; 
-    let specialChance = 0.05; 
-    let enemyLevel = 1;
-
-    if (currentMeters < 1000) { spawnCooldown = 5000; specialChance = 0.01; enemyLevel = 1; } 
-    else if (currentMeters < 2000) { spawnCooldown = 3000; specialChance = 0.05; enemyLevel = 3; } 
-    else if (currentMeters < 3000) { spawnCooldown = 1000; specialChance = 0.10; enemyLevel = 5; } 
-    else { spawnCooldown = 500; specialChance = 0.20; enemyLevel = 8; }
-
-    // [핵심] 방장(Host)일 경우에만 적을 생성하고 서버로 동기화
-    if (isHost && Date.now() - lastEnemySpawn > spawnCooldown) {
-        let enemyType = 0; 
-        if (Math.random() < specialChance) {
-            enemyType = Math.random() < 0.5 ? 1 : 2; 
-        }
-        let isSpecial = enemyType > 0;
-        
-        let newEnemy = {
-            id: Math.random().toString(36).substr(2, 9), 
-            x: player.x + canvas.width + 100, 
-            y: 100, 
-            vx: 0, vy: 0, width: 20, height: 50,
-            hp: isSpecial ? 60 + (enemyLevel * 10) : 25 + (enemyLevel * 3),
-            maxHp: isSpecial ? 60 + (enemyLevel * 10) : 25 + (enemyLevel * 3),
-            color: enemyType === 2 ? 'orange' : (enemyType === 1 ? 'purple' : '#00aa00'),
-            enemyType: enemyType, 
-            walkTime: Math.random() * Math.PI, 
-            shootTimer: 0, attackTimer: 0, 
-            reward: isSpecial ? 50 : 20,
-            weapon: enemyType === 2 ? 'melee' : 'pistol', 
-            isGrounded: false 
+        const UNIT_DESCRIPTIONS = {
+            'ㄷ': '제조창: 기동함선이 파괴될 시 10턴 후 자동 복구합니다. 파괴 될 시 최대연료 -1/ 상대방 +2',
+            'L': '레이더: 마주보는 x좌표에 적 기동함선이 진입하면 즉시 포착합니다. 10프레이즈마다 랜덤하게 조사합니다.',
+            'T': '방패: 자신을 포함한 뒷라인을 적의 공격으로부터 보호합니다. 피격 시 추가 턴 없이 종료됩니다.',
+            'ㅗ': '일반 함선입니다.',
+            'I': '저격수: 마주보는 x좌표에 SNIPE스킬로 적을 공격합니다.',
+            '1x1': '기동함선: MOVE스킬로 반경 2칸을 기동하며 보급상자를 확보합니다.',
+            '1x2': '일반 소형 함선입니다.',
+            '📦': '강철 상자: 피격 시 상대에게 보너스 연료를 제공하는 미끼입니다.',
+            '💣': '시한폭탄: 피격 시 적의 동일 좌표 3x3 영역에 융단폭격'
         };
-        socket.emit('spawnEnemy', newEnemy);
-        lastEnemySpawn = Date.now();
-    }
 
-    for (let i = enemies.length - 1; i >= 0; i--) {
-        let e = enemies[i];
-        if (e.hp <= 0) {
-            player.money += e.reward; 
-            enemies.splice(i, 1);
-            continue;
+        const UNIT_SHAPES = {
+            'ㄷ': [[0,0], [1,0], [0,1], [0,2], [1,2]],
+            'L':  [[0,0],[0,1],[0,2],[1,2]],
+            'T':  [[0,0],[1,0],[2,0],[1,1]],
+            'ㅗ': [[0,1],[1,0],[1,1],[2,1]],
+            'I':  [[0,0],[1,0],[2,0],[3,0]],
+            '1x1': [[0,0]],
+            '1x2': [[0,0],[1,0]],
+            '📦': [[0,0]],
+            '💣': [[0,0]]
+        };
+
+        // 인벤토리에 강철 상자 1개 추가
+        let inventory = { 'ㄷ':1, 'L':1, 'T':1, 'ㅗ':1, 'I':1, '1x1':1, '1x2':1, '📦':1, '💣':1 };
+
+        function joinGame() {
+            myName = document.getElementById('name-input').value;
+            myRoom = document.getElementById('room-input').value;
+            if(!myName || !myRoom) return alert("입력 정보 부족!");
+            
+            // 서버에 입장 요청
+            socket.emit('joinRoom', { roomCode: myRoom, name: myName });
         }
 
-        e.vy += player.gravity;
-        
-        // 멀티플레이어 타겟팅 AI (나와 다른 유저 중 제일 가까운 사람 타겟팅)
-        let target = player;
-        let minDist = Math.abs(e.x - player.x);
-        for (let id in otherPlayers) {
-            let op = otherPlayers[id];
-            let absD = Math.abs(e.x - op.x);
-            if (absD < minDist) {
-                minDist = absD;
-                target = op;
-            }
-        }
+        // 🚨 [신규 추가] 서버에서 중복 이름이라고 빠꾸(?) 먹였을 때
+        socket.on('joinError', (msg) => {
+            alert(msg); // "이미 사용 중인 이름입니다." 알림창 띄움
+        });
 
-        let dist = e.x - target.x; 
-        let absDist = Math.abs(dist);
-        let dir = dist > 0 ? -1 : 1; 
-        let baseSpeed = e.maxHp >= 60 ? 2 : 1.25; 
-        
-        if (e.enemyType === 2) {
-            baseSpeed *= 1.6; 
-            if (absDist > 40) {
-                e.vx = baseSpeed * dir; 
-            } else {
-                e.vx = 0; 
-            }
+        // 🚨 [신규 추가] 서버에서 입장을 허락했을 때 비로소 게임 화면으로 넘어감!
+        socket.on('joinSuccess', () => {
+            document.getElementById('my-name-display').innerText = myName;
+            document.getElementById('login-screen').style.display = 'none';
+            document.getElementById('main-game').style.display = 'flex';
+            renderInventory();
+            initGrids();
+        });
 
-            if (absDist <= 50 && Date.now() - (e.lastShot || 0) > 1000) {
-                e.lastShot = Date.now();
-                e.attackTimer = 15; 
+
+
+        function initGrids() {
+            const oppGrid = document.getElementById('opponent-grid');
+            const myGrid = document.getElementById('my-grid');
+            oppGrid.innerHTML = ''; myGrid.innerHTML = '';
+  
+            for(let i=0; i<140; i++) {
+                const oCell = document.createElement('div');
                 
-                // 타겟이 나일 때만 체력 깎임 처리 (중복 데미지 방지)
-                if (target === player) {
-                    if (player.weapon === 'shield' && player.ammo['shield'] > 0) {
-                        player.ammo['shield']--;
-                        for (let k = 0; k < 10; k++) {
-                            sparks.push({ x: player.x, y: player.y - 25, vx: (Math.random() - 0.5) * 10, vy: (Math.random() - 0.5) * 10, life: 15 + Math.random() * 10 });
+                oCell.onclick = function(e) { 
+                    if(gameStatus === 'PLAYING' && isMyTurn) {
+                        if (actionMode === 'MOVE') return alert("🏃 기동 모드입니다. 내 격자판의 1x1 함선을 클릭하세요.");
+                        
+                        const typeToEmit = actionMode; 
+
+                        // 🚨 1. 방금 클릭한 좌표와 공격 타입을 저장만 해둡니다. (아직 안 터짐!)
+                        lastClickX = e.clientX;
+                        lastClickY = e.clientY;
+                        lastAttackType = actionMode;
+
+                        // 🎯 [저격 모드 전용 로직]
+                        if (actionMode === 'SNIPE') {
+                            if (!oCell.classList.contains('sniper-line')) {
+                                addGameLog("[차단] 저격은 가이드라인(하늘색)이 쳐진 X좌표만 공격할 수 있습니다!");
+                                return; 
+                            }
+                            
+                            // 🚀 [신규 추가] 클릭 즉시 클라이언트 단독으로 저격 이펙트 발사!
+                            fireSnipe(i);
+
+                            renderSniperLines(false);
+                            setActionMode('ATTACK'); 
+                        } 
+                        
+                        // 🚀 2. 이펙트 없이 바로 서버로 공격 정보 발송 (심판 판정 대기)
+                        socket.emit('attack', { index: i, type: typeToEmit }); 
+                    }
+                    else if(gameStatus === 'PLAYING' && !isMyTurn) addGameLog("[차단] 지금은 내 턴이 아닙니다.");
+                };
+
+                oppGrid.appendChild(oCell);
+                
+                const mCell = document.createElement('div');
+                
+                // 🌟 [A기능] 마우스가 올라갔을 때 (하이라이트 또는 고스트)
+                mCell.onmouseenter = function() { 
+                    if (gameStatus === 'PLAYING') {
+                        const hoveredUnit = myUnits.find(u => u.cells.includes(i));
+                        if (hoveredUnit) {
+                            const cells = document.getElementById('my-grid').children;
+                            hoveredUnit.cells.forEach(c => {
+                                if (cells[c]) cells[c].classList.add('hover-highlight');
+                            });
                         }
                     } else {
-                        player.hp -= 20; 
-                        if (player.hp <= 0) {
-                            alert("체력이 0이 되었습니다. 게임 오버!");
-                            location.reload(); 
+                        showGhost(i); // 배치/기동 단계 잔상
+                    }
+                };
+
+                // 🌟 [A기능] 마우스가 빠져나갔을 때 (하이라이트 제거)
+                mCell.onmouseleave = function() {
+                    if (gameStatus === 'PLAYING') {
+                        const hoveredUnit = myUnits.find(u => u.cells.includes(i));
+                        if (hoveredUnit) {
+                            const cells = document.getElementById('my-grid').children;
+                            hoveredUnit.cells.forEach(c => {
+                                if (cells[c]) cells[c].classList.remove('hover-highlight');
+                            });
+                        }
+                    }
+                    // clearGhost는 부모 my-grid의 onmouseleave로도 처리되지만 여기서도 안전하게 처리
+                };
+
+                // 📋 [B기능] 클릭했을 때 (기존 기동 로직 + 설명 팝업)
+                mCell.onclick = function() { 
+                    if(gameStatus === 'PLAYING') {
+                        const clickedUnit = myUnits.find(u => u.cells.includes(i));
+
+                        // 1. 내 턴이고 기동(MOVE) 모드일 때는 기존 기동 로직 실행
+                        if (isMyTurn && actionMode === 'MOVE') {
+                            // (형님의 기존 MOVE 본대/1x1 기동 로직이 들어가는 자리)
+                            const isFleetManeuver = (currentPhrase > 0 && currentPhrase % 5 === 0);
+                            if (selected1x1Idx === -1) {
+                                if (!clickedUnit) return; 
+                                if (isFleetManeuver) {
+                                    if (clickedUnit.type === '📦' || clickedUnit.type === '💣') {
+                                        addGameLog("❌ 보급 상자나 지뢰는 이동할 수 없습니다."); return;
+                                    }
+                                    selected1x1Idx = i; renderMyGrid(); 
+                                } else {
+                                    if (clickedUnit.type !== '1x1') {
+                                        // 🚨 MOVE 모드인데 다른 유닛을 눌렀다면 에러 로그 대신 팝업을 띄워줌!
+                                        openUnitPopup(clickedUnit.type);
+                                        return;
+                                    }
+                                    selected1x1Idx = i; renderMyGrid();
+                                }
+                                return;
+                            } else {
+                                socket.emit('move1x1', { from: selected1x1Idx, to: i });
+                                selected1x1Idx = -1; renderMyGrid();
+                                return;
+                            }
+                        }
+
+                        // 2. 그 외의 모든 상황(ATTACK, SNIPE이거나 내 턴이 아닐 때)에서 내 유닛 클릭 시 팝업!
+                        if (clickedUnit) {
+                            openUnitPopup(clickedUnit.type);
+                        }
+
+                    } else {
+                        // 게임 중이 아닐 때 (배치 단계)
+                        placeOrPickUnit(i); 
+                    }
+                };
+                myGrid.appendChild(mCell);
+            }
+        }
+
+        function get3x3Area(centerIdx) {
+            const result = [];
+            const centerX = centerIdx % 14;
+            const centerY = Math.floor(centerIdx / 14);
+
+            for (let dy = -1; dy <= 1; dy++) {
+                for (let dx = -1; dx <= 1; dx++) {
+                    const nx = centerX + dx;
+                    const ny = centerY + dy;
+                    // 0~13 범위 안에 있을 때만 포함
+                    if (nx >= 0 && nx <= 13 && ny >= 0 && ny <= 9) {
+                        result.push(ny * 14 + nx);
+                    }
+                }
+            }
+            return result;
+        }
+
+        // 🚨 액션 버튼 클릭 시 모드 변경 (플래시 이펙트 추가 + 전손 검증)
+        function setActionMode(mode) {
+            if (!isMyTurn && gameStatus === 'PLAYING') return;
+
+            // 🚨 [신규 추가] 연료 검사 전에 유닛 전손 여부부터 확인 (이중 자물쇠)
+            if (mode === 'SNIPE') {
+                const sniper = myUnits.find(u => u.type === 'I');
+                const isSniperAlive = sniper && sniper.cells.length > (sniper.hitCells ? sniper.hitCells.length : 0);
+                if (!isSniperAlive) {
+                    addGameLog("[시스템] ⚠️ 저격수(I)가 전손되어 스킬을 사용할 수 없습니다.");
+                    return; // 실행 중단 (버튼 안 눌림)
+                }
+            } else if (mode === 'MOVE') {
+                const mover = myUnits.find(u => u.type === '1x1');
+                const isMoverAlive = mover && mover.cells.length > (mover.hitCells ? mover.hitCells.length : 0);
+                if (!isMoverAlive) {
+                    addGameLog("[시스템] ⚠️ 기동함선(1x1)이 전손되어 기동할 수 없습니다.");
+                    return; // 실행 중단 (버튼 안 눌림)
+                }
+            }
+
+            // --- (여기서부터는 형님의 기존 로직과 동일합니다) ---
+            
+            // 현재 화면에 표시된 연료량을 숫자로 가져옵니다.
+            const currentFuel = parseInt(document.getElementById('current-fuel').innerText) || 0;
+
+            // 연료가 부족하면 경고 띄우고 무조건 'ATTACK'으로 강제 변경
+            if (mode === 'SNIPE' && currentFuel < 1) {
+                addGameLog("[시스템] ⛽ 연료가 부족하여 저격을 사용할 수 없습니다.");
+                mode = 'ATTACK';
+            } else if (mode === 'MOVE' && currentFuel < 2) {
+                addGameLog("[시스템] ⛽ 연료가 부족하여 기동할 수 없습니다.");
+                mode = 'ATTACK';
+            }
+
+            actionMode = mode;
+            document.querySelectorAll('.action-btn').forEach(btn => btn.classList.remove('active'));
+            document.getElementById('btn-' + mode).classList.add('active');
+            selected1x1Idx = -1; // 모드가 바뀌면 선택해제
+            
+            renderMyGrid(); // 1. 먼저 화면을 평소처럼 그립니다.
+
+            // 🚨 MOVE 모드를 눌렀을 때, 살아있는 1x1 함선을 찾아 하얗게 반짝이게 합니다!
+            if (mode === 'MOVE') {
+                const cells = document.getElementById('my-grid').children;
+                myUnits.forEach(u => {
+                    // 1x1이면서 파괴되지 않은 유닛만 찾음
+                    if (u.type === '1x1' && !u.isHit) {
+                        u.cells.forEach(c => {
+                            if (cells[c]) {
+                                cells[c].classList.add('flash-1x1'); // 번쩍!
+                                // 0.6초 뒤에 클래스를 빼줘서, 나중에 또 누르면 다시 번쩍일 수 있게 함
+                                setTimeout(() => cells[c].classList.remove('flash-1x1'), 600);
+                            }
+                        });
+                    }
+                });
+            }
+
+            // 모드가 바뀔 때 저격(SNIPE)이면 라인 켜고, 아니면 끄기
+            renderSniperLines(mode === 'SNIPE');
+            
+            const scopeLayer = document.getElementById('scope-layer');
+            const reticleLayer = document.getElementById('reticle');
+            if (scopeLayer && reticleLayer) {
+                scopeLayer.style.display = (mode === 'SNIPE') ? 'block' : 'none';
+                reticleLayer.style.display = (mode === 'SNIPE') ? 'block' : 'none';
+            }
+        }
+
+        // 🚨 신규 함수: 기동함선(1x1) 클릭 및 이동 로직 (클라이언트 1차 필터링)
+        function handleMove1x1Click(idx) {
+            if (selected1x1Idx === -1) {
+                // 선택 로직
+                const unit = myUnits.find(u => u.type === '1x1' && u.cells.includes(idx) && !u.isHit);
+                if (unit) {
+                    selected1x1Idx = idx;
+                    addGameLog("[기동] 1x1 함선 선택 완료. 이동할 녹색 빈칸을 클릭하세요.");
+                    renderMyGrid(); // 여기서 이동 가능 범위가 그려집니다.
+                } else {
+                    addGameLog("선택한 칸에 온전한 1x1 기동함선이 없습니다.");
+                }
+            } else {
+                // 이동 로직
+                if (selected1x1Idx === idx) { 
+                    selected1x1Idx = -1; // 같은 곳 클릭 시 취소
+                    renderMyGrid();
+                    return; 
+                }
+
+                // 🚨 2칸 거리 제한 클라이언트 검증 추가
+                const pX = selected1x1Idx % 14, pY = Math.floor(selected1x1Idx / 14);
+                const cX = idx % 14, cY = Math.floor(idx / 14);
+                
+                if (Math.abs(pX - cX) > 2 || Math.abs(pY - cY) > 2) {
+                    addGameLog("[차단] 1x1 함선은 반경 2칸 이내로만 기동할 수 있습니다.");
+                    return; 
+                }
+
+                if (myUnits.some(u => u.cells.includes(idx))) {
+                    addGameLog("다른 유닛이 있는 곳으로는 이동할 수 없습니다.");
+                    selected1x1Idx = -1; renderMyGrid();
+                    return;
+                }
+                
+                socket.emit('move1x1', { from: selected1x1Idx, to: idx });
+                selected1x1Idx = -1;
+                renderMyGrid();
+            }
+        }
+
+        // 🎯 스마트 조준경 (마그네틱 에임 어시스트 - 다중 사선 지원)
+        window.addEventListener('mousemove', (e) => {
+            if (actionMode !== 'SNIPE') return;
+
+            const scopeLayer = document.getElementById('scope-layer');
+            const reticleLayer = document.getElementById('reticle');
+
+            if(scopeLayer && reticleLayer) {
+                let targetX = e.clientX; 
+                let targetY = e.clientY; 
+
+                // 🧲 [핵심 수정] 모든 가이드라인을 다 가져옴
+                const validCells = document.querySelectorAll('.sniper-line');
+                
+                if (validCells.length > 0) {
+                    let closestX = targetX;
+                    let minDistance = Infinity;
+
+                    // 4칸(또는 여러 칸) 중 현재 마우스 X좌표와 가장 가까운 칸의 중앙값을 찾음
+                    validCells.forEach(cell => {
+                        const rect = cell.getBoundingClientRect();
+                        const cellCenterX = rect.left + (rect.width / 2);
+                        const distance = Math.abs(targetX - cellCenterX);
+
+                        if (distance < minDistance) {
+                            minDistance = distance;
+                            closestX = cellCenterX; // 가장 가까운 X좌표로 갱신
+                        }
+                    });
+
+                    // 조준경 X좌표를 가장 가까운 사선의 중앙으로 강제 고정!
+                    targetX = closestX;
+
+                    // Y좌표는 상대방 격자판 밖으로 나가지 않게 위아래 한계선 걸기
+                    const gridRect = document.getElementById('opponent-grid').getBoundingClientRect();
+                    if (targetY < gridRect.top) targetY = gridRect.top;
+                    if (targetY > gridRect.bottom) targetY = gridRect.bottom;
+                }
+
+                // 조준경 위치 적용
+                scopeLayer.style.left = targetX + 'px';
+                scopeLayer.style.top = targetY + 'px';
+                reticleLayer.style.left = targetX + 'px';
+                reticleLayer.style.top = targetY + 'px';
+            }
+        });
+
+        // =========================================
+        // 🔫 저격(Snipe) 시각 이펙트 엔진
+        // =========================================
+        function fireSnipe(targetIdx) {
+            // 1. 발사할 아군 저격수(I)의 셀 인덱스 찾기 (타겟과 X좌표가 같은 칸)
+            let shooterIdx = -1;
+            myUnits.forEach(u => {
+                if (u.type === 'I') {
+                    const isAlive = u.cells.length > (u.hitCells ? u.hitCells.length : 0);
+                    if (isAlive) {
+                        u.cells.forEach(c => {
+                            // 타겟과 열(col)이 일치하는 I블럭의 한 칸을 발사구로 지정
+                            if (c % 14 === (targetIdx % 14)) {
+                                shooterIdx = c;
+                            }
+                        });
+                    }
+                }
+            });
+
+            if (shooterIdx === -1) return; // 안전장치: 혹시라도 못 찾으면 취소
+
+            // 2. 출발지(내 격자)와 목적지(상대 격자) 중앙 픽셀 좌표 가져오기
+            const startCoords = getCellCoords('my-grid', shooterIdx);
+            const targetCoords = getCellCoords('opponent-grid', targetIdx);
+
+            // 탄도학 계산
+            const deltaX = targetCoords.x - startCoords.x;
+            const deltaY = targetCoords.y - startCoords.y;
+            const angle = Math.atan2(deltaY, deltaX) * (180 / Math.PI); 
+            const distance = Math.sqrt((deltaX * deltaX) + (deltaY * deltaY));
+
+            // 3. 탄알(Tracer) 생성
+            const bullet = document.createElement('div');
+            bullet.className = 'snipe-bullet';
+            bullet.style.left = startCoords.x + 'px';
+            bullet.style.top = startCoords.y + 'px';
+            document.body.appendChild(bullet);
+
+            // 거리에 비례한 체공 시간 (묵직하고 빠른 속도)
+            const travelTime = 80 + (distance * 0.15); 
+
+            // 4. 발사 애니메이션
+            const animation = bullet.animate([
+                { transform: `translate(0, -50%) rotate(${angle}deg) translateX(0px)` },
+                { transform: `translate(0, -50%) rotate(${angle}deg) translateX(${distance}px)` }
+            ], {
+                duration: travelTime,
+                easing: 'ease-in'
+            });
+
+            // 5. 도착 순간 폭발
+            animation.onfinish = () => {
+                bullet.remove();
+                createFirework(targetCoords.x, targetCoords.y);
+            };
+        }
+
+        // =========================================
+        // 🎇 저격 탄환 피격 파편 (화약/금속 불꽃)
+        // =========================================
+        function createFirework(x, y) {
+            const particleCount = 35; 
+            const colors = ['#ffea00', '#ff9900', '#ff6600', '#ff3300', '#cc0000'];
+
+            for (let i = 0; i < particleCount; i++) {
+                const spark = document.createElement('div');
+                spark.className = 'firework-spark';
+                
+                const size = Math.random() * 3 + 2; 
+                spark.style.width = size + 'px';
+                spark.style.height = size + 'px';
+                
+                const color = colors[Math.floor(Math.random() * colors.length)];
+                spark.style.backgroundColor = color;
+                spark.style.boxShadow = `0 0 6px ${color}`; 
+
+                spark.style.left = x + 'px';
+                spark.style.top = y + 'px';
+                document.body.appendChild(spark);
+
+                const angle = Math.random() * Math.PI * 2; 
+                const velocity = Math.random() * 80 + 30; 
+                
+                const destX = Math.cos(angle) * velocity;
+                const destY = Math.sin(angle) * velocity;
+
+                const anim = spark.animate([
+                    { transform: 'translate(-50%, -50%) scale(1)', opacity: 1 },
+                    { transform: `translate(calc(-50% + ${destX}px), calc(-50% + ${destY}px)) scale(0)`, opacity: 0 }
+                ], {
+                    duration: 400 + Math.random() * 400, 
+                    easing: 'cubic-bezier(0.1, 0.9, 0.2, 1)' 
+                });
+
+                anim.onfinish = () => spark.remove();
+            }
+        }
+
+        // =========================================
+        // 🚀 미사일 융단폭격 엔진 (형님이 만든 코드 기반)
+        // =========================================
+        function triggerBombStrike(targetX, targetY) {
+            const body = document.body;
+            const reticle = document.createElement('div');
+            reticle.className = 'reticle';
+            reticle.style.left = targetX + 'px';
+            reticle.style.top = targetY + 'px';
+
+            const percentDisplay = document.createElement('div');
+            percentDisplay.className = 'scan-percent';
+            percentDisplay.innerText = '0%';
+            reticle.appendChild(percentDisplay);
+
+            const marksContainer = document.createElement('div');
+            marksContainer.className = 'marks-container';
+            [12, 24, 36].forEach(offset => {
+                const addMark = (cls, l, t) => {
+                    const m = document.createElement('div'); m.className = `mark ${cls}`; m.style.left = l; m.style.top = t; marksContainer.appendChild(m);
+                };
+                addMark('h-mark', `calc(50% - ${offset}px)`, '50%'); addMark('h-mark', `calc(50% + ${offset}px)`, '50%');
+                addMark('v-mark', '50%', `calc(50% - ${offset}px)`); addMark('v-mark', '50%', `calc(50% + ${offset}px)`);
+            });
+            reticle.appendChild(marksContainer);
+
+            const triContainer = document.createElement('div');
+            triContainer.className = 'triangle-container';
+            ['top', 'bottom', 'left', 'right'].forEach(pos => {
+                const tri = document.createElement('div'); tri.className = `tri tri-${pos}`; triContainer.appendChild(tri);
+            });
+            reticle.appendChild(triContainer);
+            body.appendChild(reticle);
+
+            setTimeout(() => reticle.classList.add('active'), 10);
+
+            // 미사일 발사 (약간의 체공 시간)
+            const missile = document.createElement('div');
+            missile.className = 'missile';
+            body.appendChild(missile);
+
+            const sx = Math.random() * window.innerWidth;
+            const sy = -100;
+            const cpX = (sx + targetX) / 2;
+            const cpY = Math.min(sy, targetY) - 400; 
+
+            const duration = 700 + Math.random() * 200; // 700~900ms 랜덤 속도로 낙하 (시차 구현)
+            const startTime = performance.now();
+
+            function animate(currentTime) {
+                const elapsed = currentTime - startTime;
+                const t = Math.min(elapsed / duration, 1);
+
+                percentDisplay.innerText = Math.floor(t * 100) + '%';
+
+                const curX = Math.pow(1 - t, 2) * sx + 2 * (1 - t) * t * cpX + Math.pow(t, 2) * targetX;
+                const curY = Math.pow(1 - t, 2) * sy + 2 * (1 - t) * t * cpY + Math.pow(t, 2) * targetY;
+
+                const nextT = Math.min(t + 0.01, 1);
+                const nextX = Math.pow(1 - nextT, 2) * sx + 2 * (1 - nextT) * nextT * cpX + Math.pow(nextT, 2) * targetX;
+                const nextY = Math.pow(1 - nextT, 2) * sy + 2 * (1 - nextT) * nextT * cpY + Math.pow(nextT, 2) * targetY;
+                
+                const angle = Math.atan2(nextY - curY, nextX - curX) * 180 / Math.PI;
+
+                missile.style.left = curX + 'px';
+                missile.style.top = curY + 'px';
+                missile.style.transform = `translate(-50%, -50%) rotate(${angle}deg)`;
+
+                if (elapsed % 30 < 20) {
+                    const dot = document.createElement('div');
+                    dot.className = 'trail-dot'; dot.style.left = curX + 'px'; dot.style.top = curY + 'px';
+                    body.appendChild(dot);
+                    setTimeout(() => { dot.style.opacity = '0'; setTimeout(() => dot.remove(), 500); }, 600);
+                }
+
+                if (t < 1) {
+                    requestAnimationFrame(animate);
+                } else {
+                    triggerMissileExplosion(targetX, targetY);
+                    missile.remove();
+                    reticle.remove();
+                }
+            }
+            requestAnimationFrame(animate);
+        }
+
+        function triggerMissileExplosion(x, y) {
+            const expo = document.createElement('div');
+            expo.className = 'missile-explosion';
+            expo.style.left = x + 'px';
+            expo.style.top = y + 'px';
+            expo.style.animation = 'explode-anim 0.4s ease-out forwards';
+            document.body.appendChild(expo);
+
+            document.body.classList.add('shake-active');
+            setTimeout(() => {
+                expo.remove();
+                document.body.classList.remove('shake-active');
+            }, 300);
+        }
+
+        // 🎯 격자판 번호를 주면 그 칸의 정중앙 X, Y 픽셀 좌표를 찾아오는 마법의 함수!
+        function getCellCoords(gridId, index) {
+            const cell = document.getElementById(gridId).children[index];
+            if (!cell) return { x: window.innerWidth / 2, y: window.innerHeight / 2 };
+            const rect = cell.getBoundingClientRect();
+            return {
+                x: rect.left + rect.width / 2,
+                y: rect.top + rect.height / 2
+            };
+        }
+
+        // 💥 파편 생성 함수
+        function createParticles(x, y) {
+            const count = 15;
+            for (let i = 0; i < count; i++) {
+                const p = document.createElement('div');
+                p.className = 'particle';
+                const angle = Math.random() * Math.PI * 2;
+                const dist = Math.random() * 100 + 50;
+                p.style.setProperty('--tx', `${Math.cos(angle) * dist}px`);
+                p.style.setProperty('--ty', `${Math.sin(angle) * dist}px`);
+                p.style.left = x + 'px';
+                p.style.top = y + 'px';
+                p.style.width = p.style.height = (Math.random() * 4 + 2) + 'px';
+                
+                document.body.appendChild(p); // 격자에 짤리지 않게 body에 추가
+                setTimeout(() => p.remove(), 600);
+            }
+        }
+
+        function getPlacementCells(type, pivotIdx) {
+            const shape = UNIT_SHAPES[type];
+            if(!shape) return [];
+
+            // 🚨 가로 칸 수를 20에서 14로 수정
+            const pcol = pivotIdx % 14;       
+            const prow = Math.floor(pivotIdx / 14); 
+
+            const minC = Math.min(...shape.map(o => o[0]));
+            const minR = Math.min(...shape.map(o => o[1]));
+
+            return shape.map(([c, r]) => {
+                const fc = pcol + (c - minC);
+                const fr = prow + (r - minR);
+                // 🚨 가로 칸 수 범위를 20에서 14로 수정
+                if(fc < 0 || fc >= 14 || fr < 0 || fr >= 10) return -1;
+                return fr * 14 + fc;
+            });
+        }
+
+        function placeOrPickUnit(idx) {
+            if (!isPlayer) {
+                addGameLog("[차단] 관전자는 유닛을 배치할 수 없습니다."); return;
+            }
+            if (gameStatus !== 'PLACING' && gameStatus !== 'MOVING') {
+                addGameLog("[차단] 지금은 유닛을 움직일 수 있는 단계가 아닙니다."); return;
+            }
+
+            // [클릭 시나리오 1: 이미 배치된 유닛을 다시 집어드는 경우]
+            const unitIdx = myUnits.findIndex(u => u.cells.includes(idx));
+            if (unitIdx !== -1) {
+                const unit = myUnits[unitIdx];
+                if (unit.isHit) return alert("이미 피격된 유닛은 이동할 수 없습니다!");
+
+                // 🚨 [신규 추가] 1x1 기동함선은 본대 기동(MOVING) 단계에서 재배치 불가!
+                if (gameStatus === 'MOVING' && unit.type === '1x1') {
+                    addGameLog("[차단] 1x1 기동함선은 본대 재배치로 이동할 수 없습니다.");
+                    return;
+                }
+
+                // 🚨 2번 규칙: 하나만 옮겼는지 판별하는 자물쇠 검사
+                if (gameStatus === 'MOVING') {
+                    if (movingOriginalState !== null && !unit.isMoved) {
+                        addGameLog("[차단] 1개의 유닛만 기동할 수 있습니다. 원래 자리(흰색)로 되돌리면 취소됩니다.");
+                        return;
+                    }
+                    if (movingOriginalState === null) {
+                        // 🚨 [버그 수정] 집어들 때 이 유닛의 피격 기록(맞은 구멍)을 안전하게 백업!
+                        movingHitCells = unit.hitCells ? [...unit.hitCells] : []; 
+                        movingOriginalState = { type: unit.type, cells: [...unit.cells] };
+                    }
+                }
+
+                myUnits.splice(unitIdx, 1);
+                selectedUnitType = unit.type;
+                inventory[unit.type]++;
+                renderInventory(); renderMyGrid();
+                
+                if (gameStatus === 'MOVING') addGameLog("[알림] 기동 유닛 선택 완료. 재배치할 곳을 클릭하세요.");
+                else addGameLog("[알림] 유닛 회수: " + unit.type);
+                return;
+            }
+
+            // [클릭 시나리오 2: 선택한 유닛을 바닥에 내려놓는 경우]
+            if(!selectedUnitType) {
+                addGameLog("[알림] 먼저 유닛 모양을 선택하세요!"); return;
+            }
+
+            const cells = getPlacementCells(selectedUnitType, idx);
+
+            if(cells.includes(-1)) return;
+            if(cells.some(c => myUnits.some(u => u.cells.includes(c)))) return;
+
+            // 🚨 4번 규칙 (UNDO 마법): 놓으려는 위치가 스냅샷(흰색 껍데기)과 완전히 일치하는지 파이썬처럼 리스트 비교
+            let isOriginalPos = false;
+            if (gameStatus === 'MOVING' && movingOriginalState) {
+                const sortedCells = [...cells].sort((a,b)=>a-b);
+                const sortedOriginal = [...movingOriginalState.cells].sort((a,b)=>a-b);
+                isOriginalPos = sortedCells.length === sortedOriginal.length && 
+                                sortedCells.every((v, i) => v === sortedOriginal[i]); 
+            }
+
+            myUnits.push({ 
+                type: selectedUnitType, 
+                cells: cells, 
+                isHit: false, 
+                hitCells: (gameStatus === 'MOVING') ? movingHitCells : [], // 🚨 백업해둔 피격 기록 복원!
+                isMoved: (gameStatus === 'MOVING' && !isOriginalPos) // 제자리가 아니면 이동된 유닛으로 낙인!
+            });
+            
+            inventory[selectedUnitType]--;
+
+            if (gameStatus === 'MOVING') {
+                selectedUnitType = null; // 기동 중엔 인벤토리 안 봐도 되도록 자동 선택해제
+                if (isOriginalPos) {
+                    movingOriginalState = null; // 롤백(Undo) 발동! 자물쇠 완전히 품
+                    myUnits[myUnits.length - 1].isMoved = false;
+                    addGameLog("[알림] 원위치 복귀 (실행 취소). 다시 다른 유닛을 선택할 수 있습니다!");
+                } else {
+                    addGameLog("[알림] 기동 위치 지정 완료. 다시 클릭해 수정하거나 기동 확정을 누르세요.");
+                }
+            } else {
+                if(inventory[selectedUnitType] <= 0) {
+                    selectedUnitType = Object.keys(inventory).find(t => inventory[t] > 0) || null;
+                }
+                const remaining = Object.entries(inventory).filter(([,v]) => v > 0);
+                if(remaining.length === 0) {
+                    addGameLog("[성공] 모든 유닛 배치 완료! 확정 버튼을 누르세요.");
+                }
+            }
+
+            renderInventory(); renderMyGrid();
+        }
+
+        function renderMyGrid() {
+            const cells = document.getElementById('my-grid').children;
+            for(let i=0; i<140; i++) {
+                const hasBonus = cells[i].classList.contains('bonus-box');
+                cells[i].className = hasBonus ? 'bonus-box' : '';
+                cells[i].style.opacity = "1";
+            }
+            
+            // 확정 버튼을 눌러서 movingOriginalState가 null이 되면, 이 조건문을 알아서 건너뛰면서 흰색 껍데기가 싹 사라집니다!
+            if (gameStatus === 'MOVING' && movingOriginalState) {
+                movingOriginalState.cells.forEach(c => {
+                    // 🚨 총 칸 수를 200에서 140으로 수정
+                    if(c >= 0 && c < 140) cells[c].classList.add('ghost-original');
+                });
+            }
+
+            myUnits.forEach(u => {
+                if (u.type === 'T') {
+                    // T블럭이 완전히 파괴되지 않고 살아있는지 확인
+                    const isAlive = u.cells.length > (u.hitCells ? u.hitCells.length : 0);
+                    if (isAlive) {
+                        const tXs = u.cells.map(c => c % 14);
+                        const tYs = u.cells.map(c => Math.floor(c / 14));
+                        
+                        const minX = Math.min(...tXs); // T블럭의 가장 왼쪽 X
+                        const maxX = Math.max(...tXs); // T블럭의 가장 오른쪽 X
+                        const minY = Math.min(...tYs); // T블럭의 최전방(맨 앞) Y좌표
+
+                        // 140칸 전체를 스캔하며 쉴드 범위에 해당하는지 검사
+                        for (let i = 0; i < 140; i++) {
+                            const cX = i % 14;
+                            const cY = Math.floor(i / 14);
+                            
+                            // 조건: T블럭의 너비(X) 안에 있고, T블럭 앞면(minY)보다 뒤에(Y가 큼) 있으며, T블럭 자체 좌표는 아닐 것
+                            if (cX >= minX && cX <= maxX && cY > minY && !u.cells.includes(i)) {
+                                cells[i].classList.add('passive-shield-glass');
+                            }
+                        }
+                    }
+                }
+            });
+
+            myUnits.forEach(u => {
+                u.cells.forEach(c => {
+                    // 🚨 총 칸 수를 200에서 140으로 수정
+                    if(c < 0 || c >= 140) return;
+                    cells[c].classList.add('my-unit');
+                    // 🚨 강철 상자(📦)일 경우 갈색 클래스 덮어씌우기
+                    if (u.type === '📦') {
+                        cells[c].classList.add('box-unit'); 
+                    } else if (u.type === '💣') {
+                        cells[c].classList.add('bomb-unit'); // 🚨 폭탄 전용 클래스 부착
+                    }
+
+                    if(u.isHit) cells[c].style.opacity = "0.6";
+                    if(u.hitCells && u.hitCells.includes(c)) cells[c].classList.add('hit-unit');
+                    
+                    if (c === selected1x1Idx) cells[c].classList.add('moving-1x1');
+                });
+
+                // 🚨 [신규 추가] 내 유닛 전손(파괴) 이펙트 1회성 트리거
+                const isAlive = u.cells.length > (u.hitCells ? u.hitCells.length : 0);
+                const unitSig = 'my_' + u.type; // 고유 서명으로 중복 폭발 방지
+                if (!isAlive && !explodedUnitsTracker.has(unitSig)) {
+                    explodedUnitsTracker.add(unitSig);
+                    
+                    // 파괴된 유닛의 정중앙 좌표를 구해서 폭발시킴
+                    const centerCell = u.cells[Math.floor(u.cells.length / 2)];
+                    const coords = getCellCoords('my-grid', centerCell);
+                    createWreckExplosion(coords.x, coords.y);
+                }
+            });
+
+            opponentMisses.forEach(idx => {
+                if (cells[idx]) cells[idx].classList.add('miss-cell');
+            });
+
+            if (gameStatus === 'PLAYING' && actionMode === 'MOVE' && selected1x1Idx !== -1) {
+                const pX = selected1x1Idx % 14;
+                const pY = Math.floor(selected1x1Idx / 14);
+                
+                for(let i=0; i<140; i++) {
+                    const cX = i % 14;
+                    const cY = Math.floor(i / 14);
+                    // 거리 2칸 이내이면서, 자기 자신이 아닌 칸
+                    if (Math.abs(pX - cX) <= 2 && Math.abs(pY - cY) <= 2 && i !== selected1x1Idx) {
+                        // 유닛이 없는 빈칸에만 초록색 표시
+                        if (!myUnits.some(u => u.cells.includes(i))) {
+                            cells[i].classList.add('move-highlight');
                         }
                     }
                 }
             }
-        } else {
-            if (absDist > 800) {
-                e.vx = baseSpeed * dir; 
-            } else if (absDist < 450) {
-                e.vx = (baseSpeed * 0.8) * (-dir); 
+
+            // 🚨🚨 보급 상자 렌더링 (에러 완벽 수정본) 🚨🚨
+            if (globalBonusBox !== null && globalBonusBox !== undefined && gameStatus === 'PLAYING') {
+                const boxIdx = isP1 ? globalBonusBox : (139 - globalBonusBox);
+                // grid.children 대신 맨 위에서 선언한 cells 변수 사용!
+                const cell = cells[boxIdx]; 
+                if (cell) {
+                    cell.classList.add('bonus-box');
+                }
+            }
+        }
+
+        // 🚨 [신규 추가] 유닛 생존 여부에 따라 스킬 버튼을 켜고 끄는 함수
+        function updateSkillButtons() {
+            if (gameStatus !== 'PLAYING' || !myUnits) return;
+
+            // I 블럭(저격수) 생존 확인
+            const sniper = myUnits.find(u => u.type === 'I');
+            const isSniperAlive = sniper && sniper.cells.length > (sniper.hitCells ? sniper.hitCells.length : 0);
+
+            // 1x1 블럭(기동함선) 생존 확인
+            const mover = myUnits.find(u => u.type === '1x1');
+            const isMoverAlive = mover && mover.cells.length > (mover.hitCells ? mover.hitCells.length : 0);
+
+            // SNIPE 버튼 시각적 제어
+            const btnSnipe = document.getElementById('btn-snipe'); // HTML의 저격 버튼 ID (다르다면 수정)
+            if (btnSnipe) {
+                btnSnipe.disabled = !isSniperAlive;
+                btnSnipe.style.opacity = isSniperAlive ? "1" : "0.4";
+                btnSnipe.style.cursor = isSniperAlive ? "pointer" : "not-allowed";
+                if (!isSniperAlive) btnSnipe.title = "저격수(I) 전손: 스킬 사용 불가";
+            }
+
+            // MOVE 버튼 시각적 제어
+            const btnMove = document.getElementById('btn-move'); // HTML의 기동 버튼 ID (다르다면 수정)
+            if (btnMove) {
+                btnMove.disabled = !isMoverAlive;
+                btnMove.style.opacity = isMoverAlive ? "1" : "0.4";
+                btnMove.style.cursor = isMoverAlive ? "pointer" : "not-allowed";
+                if (!isMoverAlive) btnMove.title = "기동함선(1x1) 전손: 스킬 사용 불가";
+            }
+
+            // 만약 파괴된 스킬을 이미 선택하고 있었다면, 강제로 '일반 포격(ATTACK)'으로 돌려버림
+            if ((actionType === 'SNIPE' && !isSniperAlive) || (actionType === 'MOVE' && !isMoverAlive)) {
+                setActionMode('ATTACK');
+            }
+        }
+
+        // 🚨 저격 가이드라인을 그리고 지우는 전용 함수
+        function renderSniperLines(show) {
+            const oppCells = document.getElementById('opponent-grid').children;
+            
+            // 1. 일단 기존 스나이퍼 라인을 싹 지웁니다.
+            for(let i=0; i<140; i++) {
+                oppCells[i].classList.remove('sniper-line');
+            }
+
+            // 2. 끄라고 했거나, 내 턴이 아니면 여기서 종료
+            if (!show || gameStatus !== 'PLAYING' || !isMyTurn) return;
+
+            // 3. 내 'I' 블럭 중 살아있는 녀석들의 X좌표(열) 수집
+            let validCols = [];
+            myUnits.forEach(u => {
+                if (u.type === 'I') {
+                    const isAlive = u.cells.length > (u.hitCells ? u.hitCells.length : 0);
+                    if (isAlive) {
+                        u.cells.forEach(c => {
+                            let col = c % 14;
+                            if (!validCols.includes(col)) validCols.push(col);
+                        });
+                    }
+                }
+            });
+
+            // 4. 수집된 X좌표에 해당하는 상대방 격자판에 색칠 (단, 이미 때린 곳은 제외!)
+            for(let i=0; i<140; i++) {
+                let col = i % 14;
+                if (validCols.includes(col)) {
+                    // 🚨 핵심: 빨간색(hit)이나 회색(miss)이 없을 때만 하늘색을 칠함
+                    if (!oppCells[i].classList.contains('hit-unit') && !oppCells[i].classList.contains('miss-cell')) {
+                        oppCells[i].classList.add('sniper-line');
+                    }
+                }
+            }
+        }
+
+        // 🚨 [신규] L블럭 3프레이즈 자동 레이더 결과 수신
+        socket.on('autoRadarResult', data => {
+            if (!isPlayer) return; // 관전자는 일단 패스
+
+            const { centerIdx, area, foundEnemy } = data;
+            const oppCells = document.getElementById('opponent-grid').children;
+
+            // 1. 3x3 영역에 붉은색 레이더 핑 이펙트 재생
+            area.forEach(idx => {
+                if(oppCells[idx]) {
+                    oppCells[idx].classList.add('radar-flash');
+                    setTimeout(() => oppCells[idx].classList.remove('radar-flash'), 1500);
+                }
+            });
+
+            // 2. 적군 발견 시 화면 중앙에 거대한 텍스트 박스 출력!
+            if (foundEnemy) {
+                addGameLog("🚨 [레이더 경보] 광역 탐색 중 적의 금속 반응을 감지했습니다!");
+                
+                const overlay = document.getElementById('auto-radar-overlay');
+                overlay.classList.add('active');
+                
+                // 3초 후 경고창 닫기
+                setTimeout(() => {
+                    overlay.classList.remove('active');
+                }, 3000);
             } else {
-                e.vx = 0; 
+                addGameLog("📡 [정기 스캔] 탐색 구역 내 특이사항 없습니다.");
+            }
+        });
+        
+        // 📋 [신규 추가] 인게임 유닛 정보 팝업 열기/닫기 함수
+        function openUnitPopup(type) {
+            const popup = document.getElementById('in-game-unit-popup');
+            document.getElementById('popup-title').innerText = `UNIT INFO: ${type}`;
+            document.getElementById('popup-desc').innerText = UNIT_DESCRIPTIONS[type] || '설명이 없습니다.';
+            
+            // 나타나는 애니메이션 겸해서 display flex로 켬
+            popup.style.display = 'flex';
+        }
+
+        function closeUnitPopup() {
+            document.getElementById('in-game-unit-popup').style.display = 'none';
+        }
+
+        function showGhost(idx) {
+            clearGhost();
+            
+            if (!isPlayer || (gameStatus !== 'PLACING' && gameStatus !== 'MOVING') || !selectedUnitType) return;
+            
+            const cells = getPlacementCells(selectedUnitType, idx);
+            const myG = document.getElementById('my-grid');
+            const invalid = cells.includes(-1) || cells.some(c => myUnits.some(u => u.cells.includes(c)));
+            
+            // 🚨 3번 규칙: MOVING 단계면 마스터키(보라색)로 시각적 피드백 제공
+            const ghostClass = (gameStatus === 'MOVING') ? 'ghost-purple' : 'ghost';
+
+            cells.forEach(c => { 
+                // 🚨 총 칸 수를 200에서 140으로 수정
+                if(c >= 0 && c < 140) {
+                    myG.children[c].classList.add(ghostClass);
+                    if(invalid) myG.children[c].classList.add('ghost-invalid');
+                }
+            });
+        }
+
+        function clearGhost() { 
+            // 흰색 껍데기는 지우면 안 되므로 제외하고 싹 지움
+            document.querySelectorAll('.ghost, .ghost-purple, .ghost-invalid').forEach(g => {
+                g.classList.remove('ghost', 'ghost-purple', 'ghost-invalid');
+            }); 
+        }
+
+        function renderInventory() {
+            const inv = document.getElementById('unit-inventory');
+            const descPanel = document.getElementById('unit-description'); 
+            inv.innerHTML = '';
+            
+            // 설명창 표시 여부 제어
+            if (gameStatus === 'PLACING' || gameStatus === 'MOVING') {
+                descPanel.style.display = 'block';
+
+                // 🚨 [핵심 해결] 화면을 그릴 때 현재 선택된 유닛의 설명을 무조건 갱신합니다!
+                if (selectedUnitType) {
+                    document.getElementById('desc-title').innerText = `UNIT INFO: ${selectedUnitType}`;
+                    document.getElementById('desc-body').innerText = UNIT_DESCRIPTIONS[selectedUnitType] || '설명이 없습니다.';
+                } else {
+                    document.getElementById('desc-title').innerText = `UNIT INFO: READY`;
+                    document.getElementById('desc-body').innerText = '배치할 유닛을 선택하면 상세 제원이 이곳에 출력됩니다.';
+                }
+
+            } else {
+                descPanel.style.display = 'none';
+            }
+
+            for(let type in inventory) {
+                if(inventory[type] > 0) {
+                    const btn = document.createElement('button');
+                    btn.className = 'unit-btn' + (selectedUnitType === type ? ' active' : '');
+                    btn.innerText = `${type}(${inventory[type]})`;
+                    btn.onclick = function() { 
+                        selectedUnitType = type; 
+                        renderInventory(); // 버튼을 누르면 다시 화면을 그리면서 위에서 알아서 설명이 바뀝니다!
+                    };
+                    inv.appendChild(btn);
+                }
+            }
+        }
+
+        // 🖱️ [신규 추가] 팝업 외부(바탕화면 등) 클릭 시 팝업 자동 닫기
+        window.addEventListener('click', function(e) {
+            const popup = document.getElementById('in-game-unit-popup');
+            
+            // 팝업이 켜져 있는 상태일 때만 작동
+            if (popup && popup.style.display === 'flex') {
+                // 1. 클릭한 곳이 팝업창 내부인지 확인 (팝업 안의 글씨를 드래그하거나 할 땐 안 닫히게)
+                const isInsidePopup = popup.contains(e.target);
+                // 2. 클릭한 곳이 격자판(유닛)인지 확인 (다른 유닛을 클릭하면 팝업 내용이 바뀌어야 하므로 예외 처리)
+                const isGridCell = e.target.closest('.grid div');
+                
+                // 팝업 안쪽도 아니고, 유닛도 아닌 '허공이나 다른 액션 버튼'을 클릭했다면 깔끔하게 닫기!
+                if (!isInsidePopup && !isGridCell) {
+                    closeUnitPopup();
+                }
+            }
+        });
+
+        function resetPlacement() {
+            // MOVING 단계일 때도 쓰레기통(초기화) 버튼을 누르면 원위치(Undo) 시켜주는 디테일 추가
+            if(gameStatus === 'MOVING') {
+                if (movingOriginalState) {
+                    let movedUnitIdx = myUnits.findIndex(u => u.isMoved);
+                    if (movedUnitIdx !== -1) myUnits.splice(movedUnitIdx, 1);
+                    else if (selectedUnitType) { inventory[selectedUnitType]--; selectedUnitType = null; }
+                    
+                    myUnits.push({ type: movingOriginalState.type, cells: [...movingOriginalState.cells], isHit: false, isMoved: false });
+                    movingOriginalState = null;
+                    renderInventory(); renderMyGrid();
+                    addGameLog("[알림] 기동이 빗자루 버튼으로 취소되었습니다. 다시 선택하세요.");
+                }
+                return;
+            }
+
+            if(gameStatus !== 'PLACING') return; 
+            
+            myUnits.forEach(u => { if(!u.isHit) inventory[u.type]++; });
+            myUnits = myUnits.filter(u => u.isHit);
+            selectedUnitType = Object.keys(inventory).find(t => inventory[t] > 0) || null;
+            renderInventory(); renderMyGrid();
+            addGameLog("[알림] 배치 초기화 완료");
+        }
+
+        // =========================================
+        // 💥 유닛 전손(Wreck) 고속 파편 엔진 (Canvas)
+        // =========================================
+        let explodedUnitsTracker = new Set(); // 한 번 폭발한 유닛을 기억하는 추적기
+
+        const canvasWreck = document.getElementById('wreckCanvas');
+        const ctxWreck = canvasWreck.getContext('2d');
+
+        function resizeWreck() {
+            canvasWreck.width = window.innerWidth;
+            canvasWreck.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resizeWreck);
+        resizeWreck();
+
+        let wreckParticles = [];
+
+        class WreckParticle {
+            constructor(x, y, type) {
+                this.x = x;
+                this.y = y;
+                this.type = type;
+                this.life = 1.0; 
+                
+                const angle = Math.random() * Math.PI * 2;
+                let speedMultiplier = 3;
+                let baseSpeed = type === 'debris' ? Math.random() * 12 + 8 : Math.random() * 5 + 2;
+                const speed = baseSpeed * speedMultiplier;
+                
+                this.vx = Math.cos(angle) * speed;
+                this.vy = Math.sin(angle) * speed;
+                
+                if (type === 'explosion') {
+                    this.size = Math.random() * 8 + 4;
+                    this.decay = (Math.random() * 0.05 + 0.04) * 2.5; 
+                    this.color = `hsla(${Math.random() * 40 + 10}, 100%, 60%,`;
+                } else if (type === 'debris') {
+                    this.size = Math.random() * 4 + 1;
+                    this.decay = (Math.random() * 0.02 + 0.01) * 2.5;
+                    this.color = `hsla(0, 0%, 85%,`;
+                } else { 
+                    this.size = Math.random() * 15 + 10;
+                    this.decay = (Math.random() * 0.015 + 0.005) * 2.0; 
+                    this.color = `hsla(0, 0%, 50%,`;
+                }
+            }
+
+            draw() {
+                ctxWreck.save();
+                ctxWreck.beginPath();
+                ctxWreck.globalAlpha = this.life;
+                
+                if (this.type === 'debris') {
+                    ctxWreck.rect(this.x, this.y, this.size, this.size);
+                } else {
+                    ctxWreck.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                }
+                
+                ctxWreck.fillStyle = this.color + '1)'; 
+                ctxWreck.fill();
+                ctxWreck.restore();
+            }
+
+            update() {
+                this.x += this.vx;
+                this.y += this.vy;
+                this.life -= this.decay; 
+                
+                if (this.type === 'smoke') {
+                    this.size += 0.4; 
+                    this.vy -= 0.05; 
+                }
+                this.vx *= 0.94;
+                this.vy *= 0.94;
+            }
+        }
+
+        function createWreckExplosion(x, y) {
+            for (let i = 0; i < 20; i++) wreckParticles.push(new WreckParticle(x, y, 'explosion'));
+            for (let i = 0; i < 40; i++) wreckParticles.push(new WreckParticle(x, y, 'debris'));
+            for (let i = 0; i < 30; i++) wreckParticles.push(new WreckParticle(x, y, 'smoke'));
+        }
+
+        function animateWreck() {
+            // 🚨 화면을 까맣게 덮지 않으면서 잔상(Motion Blur)만 남기는 투명 캔버스 지우기 기법 적용
+            ctxWreck.globalCompositeOperation = 'destination-out';
+            ctxWreck.fillStyle = 'rgba(0, 0, 0, 0.4)';
+            ctxWreck.fillRect(0, 0, canvasWreck.width, canvasWreck.height);
+            ctxWreck.globalCompositeOperation = 'source-over';
+
+            for (let i = wreckParticles.length - 1; i >= 0; i--) {
+                wreckParticles[i].update();
+                wreckParticles[i].draw();
+                
+                if (wreckParticles[i].life <= 0) {
+                    wreckParticles.splice(i, 1);
+                }
+            }
+            requestAnimationFrame(animateWreck);
+        }
+        animateWreck(); // 루프 시작
+
+        function handleButtonClick() {
+            const btn = document.getElementById('start-btn');
+            const txt = btn.innerText.trim();
+
+            // 🚨 한글 & 영문 텍스트 모두 호환되도록 수정
+            if (txt === "게임 시작하기!" || txt === "SYSTEM START!") {
+                socket.emit('startGame');
+            } else if (txt === "준비하기" || txt === "준비 취소" || txt === "SYSTEM READY" || txt === "CANCEL READY") {
+                socket.emit('toggleReady');
+            } else if (txt === "배치 확정" || txt === "기동 확정" || txt === "본대 기동 확정") { // ✅ "기동 확정" 추가!
+                if (gameStatus === 'PLACING' && Object.values(inventory).some(v => v > 0)) {
+                    return alert("모든 유닛을 배치해야 합니다!\n남은 유닛: " +
+                        Object.entries(inventory).filter(([,v])=>v>0).map(([k,v])=>`${k}(${v}개)`).join(', '));
+                }
+                // 들고만 있고 내려놓지 않은 상태 방지
+                if (gameStatus === 'MOVING' && selectedUnitType) {
+                    return alert("기동 중인 유닛을 바닥에 내려놓아야 확정할 수 있습니다!");
+                }
+                
+                btn.disabled = true; btn.innerText = "상대 대기 중...";
+                socket.emit('finishPlacing', myUnits);
+
+                // 확정 버튼을 누르는 순간, 흰색 껍데기 기억을 지우고 화면 갱신
+                if (gameStatus === 'MOVING') {
+                    movingOriginalState = null;
+                    renderMyGrid(); 
+                }
+                
+            } else if (txt === "게임 종료") {
+                socket.emit('requestRematch'); // 서버에 초기화 요청
+            }
+        }
+
+        let currentPhrase = 0; // 🚨 [신규 추가] 현재 프레이즈(턴)을 기억할 변수
+        let globalBonusBox = null;
+        let isP1 = true;
+
+        socket.on('roomData', data => {
+            if (!data) return; 
+
+            if (data.phraseCount !== undefined) {
+                currentPhrase = data.phraseCount;
+            }
+
+            const me = data.players.find(p => p.id === socket.id);
+            const opp = data.players.find(p => p.id !== socket.id);
+            const btn = document.getElementById('start-btn');
+
+            isPlayer = !!me; 
+            if (!(gameStatus === 'MOVING' && data.gameState === 'PLAYING')) {
+                gameStatus = data.gameState;
+                globalBonusBox = data.bonusBox;
+            }
+
+            // 🏷️ 이름표 DOM 가져오기
+            const myRole = document.getElementById('my-role');
+            const myNameDisplay = document.getElementById('my-name-display');
+            const myV = document.getElementById('my-v');
+            const oppRole = document.getElementById('opp-role');
+            const oppNameDisplay = document.getElementById('opp-name');
+            const oppV = document.getElementById('opp-v');
+
+            // 🌫️ 관전자는 전장의 안개를 걷어냄 (투시)
+            const fog = document.querySelector('.fogwrapper');
+            if (fog) fog.style.display = isPlayer ? 'block' : 'none';
+
+            // ⚔️ [1] 내가 플레이어일 때 (기존 로직)
+            if (isPlayer) {
+                myRole.innerText = "● COMMANDER:";
+                myNameDisplay.innerText = me.name;
+                myV.style.display = me.isReady ? 'inline-block' : 'none';
+
+                oppRole.innerText = "● HOSTILE:";
+                oppNameDisplay.innerText = opp ? opp.name : "대기 중";
+                oppV.style.display = (opp && opp.isReady) ? 'inline-block' : 'none';
+                
+                document.getElementById('action-panel').style.display = (gameStatus === 'PLAYING') ? 'flex' : 'none';
+                document.getElementById('unit-inventory').style.display = 'flex';
+
+                // 🚨 서버와 내 유닛 상태를 완벽 동기화 (자동 부활 반영!)
+                if (gameStatus === 'PLAYING' && me.units) {
+                    myUnits = me.units; // 심판이 관리하는 최신 유닛 상태로 덮어쓰기
+                    renderMyGrid();     // 1x1이 부활했다면 화면에 즉시 그려줌
+                    updateSkillButtons();
+                }
+            }
+            // 👁️ [2] 내가 관전자일 때 (e스포츠 중계 모드)
+            else {
+                const p1 = data.players[0]; // 먼저 들어온 사람 (바닥)
+                const p2 = data.players[1]; // 늦게 들어온 사람 (상단)
+
+                myRole.innerText = "● PLAYER 1:";
+                myNameDisplay.innerText = p1 ? p1.name : "대기 중";
+                myV.style.display = (p1 && p1.isReady) ? 'inline-block' : 'none';
+
+                oppRole.innerText = "● PLAYER 2:";
+                oppNameDisplay.innerText = p2 ? p2.name : "대기 중";
+                oppV.style.display = (p2 && p2.isReady) ? 'inline-block' : 'none';
+                
+                // 관전자는 액션 패널과 인벤토리를 숨김
+                document.getElementById('action-panel').style.display = 'none';
+                document.getElementById('unit-inventory').style.display = 'none';
+                
+                // 🚨 게임 중이거나 종료 상태면 양쪽 유닛을 다 그려줌!
+                if (gameStatus === 'PLAYING' || gameStatus === 'ENDED') {
+                    renderSpectatorView(p1, p2);
+                }
             }
             
-            if (absDist <= 800 && Date.now() - (e.lastShot || 0) > 2000) { 
-                e.lastShot = Date.now();
-                e.shootTimer = 100; 
+            // 🚨 상대가 튕기거나 나가서 나 혼자 남았을 때 (대기실 상태) 완벽 초기화
+            if (data.gameState === 'LOBBY' && data.players.length < 2) {
+                // 1. 양쪽 격자판의 모든 칸을 순수한 <div></div> 로 싹 밀어버림 (락스 청소!)
+                document.querySelectorAll('.grid div').forEach(cell => {
+                    cell.className = ''; // bonus-box, my-unit, hit-unit, miss-cell 싹 다 삭제
+                });
+                // 2. 내 유닛 정보 및 빗나간 기록 등 내부 데이터도 완벽 초기화
+                myUnits = [];
+                opponentMisses = [];
+                explodedUnitsTracker.clear(); // 🚨 [신규 추가] 전손 기록 완벽 초기화!
+            }
+
+            // 🎁 보급 상자 화면 렌더링
+            document.querySelectorAll('.bonus-box').forEach(el => el.classList.remove('bonus-box'));
+            if (data.bonusBox !== null && data.gameState === 'PLAYING') {
+                // 🚨 핵심 수정: 앞에 'const'를 지워서 방금 만든 전역 변수 isP1에 값을 저장합니다!
+                isP1 = isPlayer ? (me.id === data.players[0].id) : true; 
                 
-                const targetHeadY = target.y - 45; 
-                const angle = Math.atan2(targetHeadY - (e.y - 38), target.x - e.x);
-                
-                bullets.push({
-                    x: e.x, y: e.y - 38,
-                    vx: Math.cos(angle) * 12,
-                    vy: Math.sin(angle) * 12,
-                    damage: 5, 
-                    color: 'orange',
-                    distanceTraveled: 0,
-                    weaponType: 'pistol',
-                    pierceRemaining: 0,
-                    isEnemy: true 
+                const myGridCells = document.getElementById('my-grid').children;
+                const oppGridCells = document.getElementById('opponent-grid').children;
+
+                // 🚨 내 화면의 상자 위치와 상대방 화면(거울 반전)의 상자 위치를 정확히 분리!
+                const myBoxIdx = isP1 ? data.bonusBox : (139 - data.bonusBox);
+                const oppBoxIdx = isP1 ? (139 - data.bonusBox) : data.bonusBox; 
+
+                if (myGridCells[myBoxIdx]) {
+                    myGridCells[myBoxIdx].classList.add('bonus-box');
+                }
+                if (oppGridCells[oppBoxIdx]) {
+                    oppGridCells[oppBoxIdx].classList.add('bonus-box');
+                }
+            }
+
+            // 🚨 게임 상태 및 플레이어/관전자 여부에 따른 메인 버튼 UI 제어
+            const resetBtn = document.getElementById('reset-btn'); // 🧹 리셋 버튼 요소 가져오기
+
+            if (data.gameState === 'PLAYING') {
+                btn.disabled = true; // 턴 액션은 그리드에서 하므로 메인 버튼은 클릭 방지
+                if (resetBtn) resetBtn.style.display = 'none'; // 플레이 중엔 리셋 버튼 무조건 숨김
+
+                if (!isPlayer) {
+                    // 👁️ [관전자 시점]
+                    const turnPlayer = data.players.find(p => p.id === data.turn);
+                    const turnName = turnPlayer ? turnPlayer.name : "PLAYER";
+
+                    btn.innerText = `[ ${turnName} 님의 턴 ]`;
+                    btn.style.color = "#00e1ff"; 
+                    btn.style.borderColor = "#00b8d4";
+                    btn.style.background = "rgba(0, 225, 255, 0.1)";
+                    btn.style.boxShadow = "0 0 10px rgba(0, 225, 255, 0.3)";
+                } else {
+                    // ⚔️ [플레이어 시점]
+                    if (data.turn === me.id) {
+                        btn.innerText = "[ MY TURN ]";
+                        btn.style.color = "#09ff00"; 
+                        btn.style.borderColor = "#2ecc71";
+                        btn.style.background = "rgba(9, 255, 0, 0.15)";
+                        btn.style.boxShadow = "0 0 15px rgba(9, 255, 0, 0.4)";
+                    } else {
+                        btn.innerText = "[ ENEMY TURN ]";
+                        btn.style.color = "#ff3333"; 
+                        btn.style.borderColor = "#cc0000";
+                        btn.style.background = "rgba(204, 0, 0, 0.15)";
+                        btn.style.boxShadow = "none"; 
+                    }
+                }
+            } else if (data.gameState === 'ENDED') {
+                // 🛑 게임 종료 상태
+                btn.disabled = true;
+                if (resetBtn) resetBtn.style.display = 'none';
+                btn.innerText = "[ COMBAT TERMINATED ]";
+                btn.style.color = "#8a9ba8";
+                btn.style.borderColor = "#555";
+                btn.style.background = "rgba(0, 0, 0, 0.8)";
+                btn.style.boxShadow = "none";
+
+            // 🚨🚨 [신규 핵심 추가] 배치 및 기동 상태일 때 관전자 완벽 통제!
+            } else if (data.gameState === 'PLACING' || data.gameState === 'MOVING') {
+                if (!isPlayer) {
+                    // 👁️ 관전자: 버튼 비활성화, 리셋 버튼 삭제, 배치 중 텍스트 고정
+                    btn.disabled = true;
+                    btn.innerText = data.gameState === 'PLACING' ? "[ 유닛 배치 중 . . . ]" : "[ 전술 기동 중 . . . ]";
+                    btn.style.background = "rgba(0, 0, 0, 0.8)";
+                    btn.style.color = "#8a9ba8";
+                    btn.style.borderColor = "#555";
+                    btn.style.boxShadow = "none";
+                    if (resetBtn) resetBtn.style.display = 'none'; // 절대 못 누르게 숨김!
+                } else {
+                    // ⚔️ 플레이어: 본인이 '확정'을 눌렀는지 여부에 따라 UI 변경
+                    const isPlaced = me && me.placed; 
+                    btn.disabled = isPlaced; // 확정 눌렀으면 더 이상 못 누르게 잠금
+                    btn.innerText = isPlaced ? "[ 작전 대기 중 ]" : (data.gameState === 'PLACING' ? "배치 확정" : "기동 확정");
+                    btn.style.background = isPlaced ? "rgba(0, 0, 0, 0.8)" : "rgba(5, 20, 10, 0.9)";
+                    btn.style.color = isPlaced ? "#8a9ba8" : "#09ff00";
+                    btn.style.borderColor = isPlaced ? "#555" : "#2ecc71";
+                    btn.style.boxShadow = isPlaced ? "none" : "0 0 15px rgba(9, 255, 0, 0.4)";
+                    if (resetBtn) resetBtn.style.display = isPlaced ? 'none' : 'block'; // 확정하면 리셋 버튼도 숨김
+                }
+
+            } else if (data.gameState === 'LOBBY') {
+                // 🛋️ LOBBY (대기실) 상태
+                if (resetBtn) resetBtn.style.display = 'none'; // 대기실에선 무조건 리셋 버튼 숨김
+
+                // 🚨 [수정 핵심] 관전자 방어막을 제일 겉으로 빼서 무조건 1순위로 통제합니다!
+                if (!isPlayer) {
+                    // 👁️ 대기실 관전자: 플레이어들이 레디를 하든 말든 무조건 클릭 금지 및 대기 표시!
+                    btn.disabled = true;
+                    btn.innerText = "[ SPECTATING STANDBY ]"; 
+                    btn.style.background = "rgba(0, 0, 0, 0.8)"; 
+                    btn.style.color = "#8a9ba8"; 
+                    btn.style.borderColor = "#555";
+                    btn.style.boxShadow = "none";
+                } else {
+                    // ⚔️ 대기실 플레이어 전용 로직 (관전자는 이쪽으로 절대 못 들어옴)
+                    if (data.players.length === 2 && data.players.every(p => p.isReady)) {
+                        // 두 명 모두 레디 완료 시 -> 게임 시작 버튼 활성화
+                        btn.disabled = false;
+                        btn.innerText = "SYSTEM START!"; 
+                        btn.style.background = "rgba(255, 152, 0, 0.15)"; // 어두운 주황 배경
+                        btn.style.color = "#FF9800"; 
+                        btn.style.borderColor = "#FF9800";
+                        btn.style.boxShadow = "0 0 15px rgba(255, 152, 0, 0.4)";
+                    } else {
+                        // 레디 대기 중일 시 -> 레디/취소 토글 버튼
+                        btn.disabled = false;
+                        btn.innerText = me.isReady ? "CANCEL READY" : "SYSTEM READY"; 
+                        btn.style.background = me.isReady ? "rgba(231, 76, 60, 0.15)" : "rgba(5, 20, 10, 0.9)";
+                        btn.style.color = me.isReady ? "#e74c3c" : "#09ff00";
+                        btn.style.borderColor = me.isReady ? "#e74c3c" : "#2ecc71";
+                        btn.style.boxShadow = me.isReady ? "0 0 10px rgba(231, 76, 60, 0.4)" : "0 0 15px rgba(9, 255, 0, 0.4)";
+                    }
+                }
+            }
+
+            document.getElementById('player-list').innerText = "플레이어: " + data.players.map(p => p.name).join(', ');
+            document.getElementById('spectator-list').innerText = "관전자: " + data.spectators.map(s => s.name).join(', ');
+        });
+
+
+        // 👁️ [관전자 전용] 양쪽 플레이어의 유닛을 모두 그려주는 시스템
+        function renderSpectatorView(p1, p2) {
+            const myCells = document.getElementById('my-grid').children;
+            const oppCells = document.getElementById('opponent-grid').children;
+
+            // 1. 관전자 화면 싹 초기화 (흰색 껍데기 등 제거)
+            for(let i=0; i<140; i++) {
+                myCells[i].className = ''; myCells[i].style.opacity = "1";
+                oppCells[i].className = ''; oppCells[i].style.opacity = "1";
+            }
+
+            // 2. 바닥 플레이어(P1) 유닛 그리기
+            if (p1 && p1.units) {
+                p1.units.forEach(u => {
+                    u.cells.forEach(c => {
+                        if (c >= 0 && c < 140) {
+                            myCells[c].classList.add('my-unit');
+                            if (u.type === '📦') myCells[c].classList.add('box-unit');
+                            if (u.hitCells && u.hitCells.includes(c)) myCells[c].classList.add('hit-unit');
+                        }
+                    });
+
+                    // 🚨 [신규 추가] P1 유닛 전손 폭발 (관전자용)
+                    const isAlive = u.cells.length > (u.hitCells ? u.hitCells.length : 0);
+                    const unitSig = 'p1_' + u.type;
+                    if (!isAlive && !explodedUnitsTracker.has(unitSig)) {
+                        explodedUnitsTracker.add(unitSig);
+                        const centerCell = u.cells[Math.floor(u.cells.length / 2)];
+                        const coords = getCellCoords('my-grid', centerCell);
+                        createWreckExplosion(coords.x, coords.y);
+                    }
+                });
+            }
+
+            // 3. 상단 플레이어(P2) 유닛 그리기 (🚨 관전자 시점이므로 139 거울 반전 필수!)
+            if (p2 && p2.units) {
+                p2.units.forEach(u => {
+                    u.cells.forEach(c => {
+                        if (c >= 0 && c < 140) {
+                            let mirrorIdx = 139 - c; // 거울 반전
+                            oppCells[mirrorIdx].classList.add('my-unit');
+                            if (u.type === '📦') oppCells[mirrorIdx].classList.add('box-unit');
+                            if (u.hitCells && u.hitCells.includes(c)) oppCells[mirrorIdx].classList.add('hit-unit');
+                        }
+                    });
+
+                    // 🚨 [신규 추가] P2 유닛 전손 폭발 (관전자용)
+                    const isAlive = u.cells.length > (u.hitCells ? u.hitCells.length : 0);
+                    const unitSig = 'p2_' + u.type;
+                    if (!isAlive && !explodedUnitsTracker.has(unitSig)) {
+                        explodedUnitsTracker.add(unitSig);
+                        const mirrorIdx = 139 - u.cells[Math.floor(u.cells.length / 2)];
+                        const coords = getCellCoords('opponent-grid', mirrorIdx);
+                        createWreckExplosion(coords.x, coords.y);
+                    }
                 });
             }
         }
-        
-        e.x += e.vx; 
-        e.y += e.vy;
-        if (e.vx !== 0) e.walkTime += (e.vx > 0 ? 0.2 : -0.2); 
-        if (e.shootTimer > 0) e.shootTimer -= 16; 
-        if (e.attackTimer > 0) e.attackTimer -= 1; 
 
-        const eGroundY = getTerrainY(e.x);
-        if (e.y >= eGroundY) {
-            e.y = eGroundY;
-            e.vy = 0;
-            e.isGrounded = true; 
-        } else {
-            e.isGrounded = false;
-        }
-        
-        if (e.x < camX - 1000 || e.y > 2000) enemies.splice(i, 1);
-    }
+        function changeRole(r) { socket.emit('changeRole', r); }
 
-    // --- 피격 판정 (방패 공유 시스템) ---
-    for (let i = bullets.length - 1; i >= 0; i--) {
-        let b = bullets[i];
-        b.x += b.vx;
-        b.y += b.vy;
-        b.distanceTraveled += Math.sqrt(b.vx*b.vx + b.vy*b.vy);
-        let destroy = false;
+        socket.on('startPlacing', () => {
+            gameStatus = 'PLACING';
+            selectedUnitType = null;
+            movingOriginalState = null;
+            
+            // 🚨 [방어막] 플레이어만 인벤토리와 리셋 버튼을 볼 수 있게 통제!
+            if (isPlayer) {
+                document.getElementById('unit-inventory').style.display = 'flex';
+                document.getElementById('reset-btn').style.display = 'block';
+                const btn = document.getElementById('start-btn');
+                btn.innerText = "배치 확정";
+                btn.disabled = false;
+            }
+            renderMyGrid();
+        });
 
-        if (b.isEnemy) {
-            let hitSomeone = false;
-            let pHeight = player.isCrouching ? 35 : player.height;
-            let bRadius = b.weaponType === 'sniper' ? 5 : 3;
+        socket.on('startMoving', () => {
+            gameStatus = 'MOVING';
+            selectedUnitType = null;
+            movingOriginalState = null;
+            
+            // 🚨 [방어막] 플레이어만 통제!
+            if (isPlayer) {
+                document.getElementById('unit-inventory').style.display = 'none'; // 이동할 땐 인벤토리 안 씀
+                document.getElementById('reset-btn').style.display = 'block'; // 리셋 버튼은 살려줌
+                const btn = document.getElementById('start-btn');
+                btn.innerText = "기동 확정";
+                btn.disabled = false;
+            }
+            renderMyGrid();
+        });
 
-            // 1. 내가 맞거나 막았는지 체크
-            if (b.x + bRadius > player.x - player.width/2 && 
-                b.x - bRadius < player.x + player.width/2 && 
-                b.y + bRadius > player.y - pHeight && 
-                b.y - bRadius < player.y) {
-                
-                hitSomeone = true;
-                if (player.weapon === 'shield' && player.ammo['shield'] > 0) {
-                    player.ammo['shield']--; 
-                    destroy = true;          
-                    
-                    for (let k = 0; k < 6; k++) {
-                        sparks.push({
-                            x: b.x, y: b.y,
-                            vx: -b.vx * 0.4 + (Math.random() - 0.5) * 8, 
-                            vy: -b.vy * 0.4 + (Math.random() - 0.5) * 8,
-                            life: 10 + Math.random() * 10
-                        });
-                    }
-                } else {
-                    player.hp -= b.damage;
-                    destroy = true;
-                    if (player.hp <= 0) {
-                        alert("체력이 0이 되었습니다. 게임 오버!");
-                        location.reload(); 
-                    }
+        socket.on('gameStart', data => {
+            gameStatus = "PLAYING";
+            document.getElementById('fuel-display').style.display = 'block';
+            document.getElementById('action-panel').style.display = 'flex';
+            
+            document.getElementById('unit-description').style.display = 'none';
+            document.getElementById('unit-inventory').style.display = 'none'; // 전투 중 인벤토리 숨김
+
+            setActionMode('ATTACK'); 
+            updateTurn(data.turn);
+            addGameLog("[시스템] 전투 시작! 연료를 관리하며 액션을 선택하세요.");
+            
+            document.getElementById('reset-btn').style.display = 'none';
+
+            // 🚨 최초 시작일 때만 ENGAGE SYSTEM 발동! (5프레이즈 기동 후엔 무시)
+            if (isFirstGameStart) {
+                const overlay = document.getElementById('startOverlay');
+                overlay.classList.add('active');
+                setTimeout(() => { overlay.classList.remove('active'); }, 2500);
+                isFirstGameStart = false; // 플래그 OFF!
+            }
+        });
+
+        // 🚨 아까 실수로 날아가 버린 연료 갱신 코드 완벽 복구!
+        socket.on('updateFuel', data => {
+            document.getElementById('current-fuel').innerText = data.current;
+            document.getElementById('max-fuel').innerText = data.max;
+
+            // 방금 쏜 저격이나 기동 때문에 연료가 바닥났다면, 즉시 타격 모드로 자동 복귀!
+            if (actionMode === 'SNIPE' && data.current < 1) {
+                setActionMode('ATTACK');
+            } else if (actionMode === 'MOVE' && data.current < 2) {
+                setActionMode('ATTACK');
+            }
+        });
+
+        // 🚨 플레이어 전용: 타격 결과 연출 (쉐이크 효과 추가!)
+        socket.on('attackResult', data => {
+            if (!isPlayer) return; 
+
+            // 🎯 [신규] 특정 그리드의 껍데기(wrapper)를 흔드는 함수
+            function triggerShake(gridId) {
+                const gridWrapper = document.getElementById(gridId).closest('.grid-container-wrapper');
+                if (gridWrapper) {
+                    gridWrapper.classList.remove('shaking');
+                    void gridWrapper.offsetWidth; // 꼼수: 애니메이션 연속 재생을 위한 리플로우 강제 발생
+                    gridWrapper.classList.add('shaking');
+                    setTimeout(() => { gridWrapper.classList.remove('shaking'); }, 400);
                 }
             }
+            
+            // 🚀 [추가] 서버에서 폭탄(미사일) 신호가 오면 이펙트 발동!
+            if (data.isBomb) {
+                // 내 시점인지 상대 시점인지 파악해서 어느 그리드에 그릴지 결정
+                let targetGridId = (data.attacker === socket.id) ? 'opponent-grid' : 'my-grid';
+                let targetCellIdx = (data.attacker === socket.id) ? data.attackIndex : data.targetIndex;
+                const coords = getCellCoords(targetGridId, targetCellIdx);
+                triggerBombStrike(coords.x, coords.y);
+            }
 
-            // 2. 다른 아군이 맞거나 막았는지 체크 (내가 안 맞았을 때)
-            if (!hitSomeone) {
-                for (let id in otherPlayers) {
-                    let op = otherPlayers[id];
-                    let opHeight = op.isCrouching ? 35 : 50; 
-                    if (b.x + bRadius > op.x - 10 && b.x - bRadius < op.x + 10 && 
-                        b.y + bRadius > op.y - opHeight && b.y - bRadius < op.y) {
-                        
-                        destroy = true; // 아군이 맞았으니 총알이 통과하지 못하고 사라짐
-                        if (op.weapon === 'shield' && op.shieldAmmo > 0) {
-                            for (let k = 0; k < 6; k++) {
-                                sparks.push({ x: b.x, y: b.y, vx: -b.vx * 0.4 + (Math.random() - 0.5) * 8, vy: -b.vy * 0.4 + (Math.random() - 0.5) * 8, life: 10 + Math.random() * 10 });
-                            }
+            if (data.attacker === socket.id) {
+                // [내가 공격했을 때] -> 상대방 그리드(opponent-grid) 처리
+                if (!data.blocked) {
+                    document.getElementById('opponent-grid').children[data.attackIndex].classList.add(data.hit ? 'hit-unit' : 'miss-cell');
+                    // 💥 명중(hit)했다면 상대방 그리드 흔들기!
+                    if (data.hit) {
+                        triggerShake('opponent-grid');
+                        createRoughExplosion(lastClickX, lastClickY);
+
+                        // 🚨🚨 [핵심 추가] 공격자 시점: 적 유닛 전손(Wreck) 이펙트 발동! 🚨🚨
+                        // (서버에서 이 공격으로 적 유닛이 파괴되었다는 isDestroyed: true 신호가 올 때 작동)
+                        if (data.isDestroyed) {
+                            const coords = getCellCoords('opponent-grid', data.attackIndex);
+                            createWreckExplosion(coords.x, coords.y);
+                            addGameLog(`[시스템] 💥 적 함선을 완전히 파괴했습니다!`);
                         }
-                        break;
+                    }
+                } else {
+                    const cell = document.getElementById('opponent-grid').children[data.attackIndex];
+                    cell.classList.add('shield-block');
+                    setTimeout(() => cell.classList.remove('shield-block'), 500); 
+                }
+                addGameLog(`내 공격: ${data.hit ? "💥 적중!" : (data.blocked ? "🛡️ 방어막(T)에 막힘!" : "🌊 불발")}`);
+
+            } else {
+                // [상대가 나를 공격했을 때] -> 내 그리드(my-grid) 처리
+                if (!data.blocked) {
+                    document.getElementById('my-grid').children[data.targetIndex].classList.add(data.hit ? 'hit-unit' : 'miss-cell');
+                    
+                    // 🚨 [추가] 빗맞췄다면(hit이 false면) 메모장에 그 좌표를 저장!
+                    if (!data.hit && !opponentMisses.includes(data.targetIndex)) {
+                        opponentMisses.push(data.targetIndex);
+                    }
+
+                    // 💥 내 유닛이 명중(hit) 당했다면 내 그리드 흔들기!
+                    if (data.hit) triggerShake('my-grid');
+                } else {
+                    const cell = document.getElementById('my-grid').children[data.targetIndex];
+                    cell.classList.add('shield-block');
+                    setTimeout(() => cell.classList.remove('shield-block'), 500);
+                    // 🛡️ 내 방어막이 맞았을 때도 흔들리게 하려면 아래 주석 해제!
+                    // triggerShake('my-grid');
+                }
+                addGameLog(`상대 공격: ${data.hit ? "💥 적중!" : (data.blocked ? "🛡️ 방어막(T) 작동!" : "🌊 불발")}`);
+            }
+            
+            if(data.nextTurn) updateTurn(data.nextTurn);
+
+            // 🚨 [신규 추가] T블럭 방패에 막혔을 경우 해당 열(Column) 전체 하늘색 번쩍임!
+            if (data.isShieldBlocked) {
+                // 내가 때렸으면 상대 그리드, 내가 맞았으면 내 그리드에 이펙트 발생
+                const gridId = (data.attacker === socket.id) ? 'opponent-grid' : 'my-grid';
+                const cellIdx = (data.attacker === socket.id) ? data.attackIndex : data.targetIndex;
+                
+                const col = cellIdx % 14; // 피격당한 X좌표(열) 계산
+                const grid = document.getElementById(gridId);
+                
+                // 해당 열의 10개 칸을 모두 번쩍이게 만듦
+                for (let r = 0; r < 10; r++) {
+                    const c = grid.children[r * 14 + col];
+                    if (c) {
+                        c.classList.add('flash-shield');
+                        // 0.8초 뒤에 이펙트 클래스 제거 (다시 켤 수 있도록)
+                        setTimeout(() => c.classList.remove('flash-shield'), 800);
                     }
                 }
             }
-        } else {
-            // 내가 쏜 총알이 적을 타격
-            for (let j = enemies.length - 1; j >= 0; j--) {
-                let e = enemies[j];
-                if (b.weaponType === 'sniper' && b.distanceTraveled < weapons.sniper.minRange) continue;
 
-                if (b.x > e.x - e.width/2 && b.x < e.x + e.width/2 && b.y > e.y - e.height && b.y < e.y) {
-                    e.hp -= b.damage;
-                    socket.emit('enemyHit', { enemyId: e.id, damage: b.damage }); // 타격 사실을 서버로 알림
-                    
-                    if (b.weaponType !== 'sniper') destroy = true; 
-                    if (destroy) break; 
-                }
+        });
+
+        socket.on('radarDetected', data => {
+            const oppGrid = document.getElementById('opponent-grid').children;
+            if (oppGrid[data.index]) {
+                oppGrid[data.index].classList.add('radar-flash');
+                setTimeout(() => {
+                    oppGrid[data.index].classList.remove('radar-flash');
+                }, 1500); 
             }
-        }
+            addGameLog("📡 [레이더 포착] 적 기동함선(1x1)의 이동 궤적을 감지했습니다!");
+        });
 
-        if (!destroy) {
-            let ty = getTerrainY(b.x);
-            if (b.y > ty) {
-                if (b.pierceRemaining > 0) {
-                    b.pierceRemaining--; 
-                    b.damage *= 0.7; 
+        function updateTurn(turnId) {
+            isMyTurn = (socket.id === turnId);
+            const btn = document.getElementById('start-btn');
+            
+            // 1. 메인 버튼(준비/턴 표시) 상태 변경 
+            // 🚨 [수정] 관전자는 건드리지 않고, 플레이어일 때만 네온사인 텍스트로 변경!
+            if (isPlayer) {
+                if (isMyTurn) {
+                    btn.innerText = "[ MY TURN ]";
+                    btn.style.color = "#09ff00"; // 초록색 네온
+                    btn.style.borderColor = "#2ecc71";
+                    btn.style.background = "rgba(9, 255, 0, 0.15)";
+                    btn.style.boxShadow = "0 0 15px rgba(9, 255, 0, 0.4)";
                 } else {
-                    destroy = true;
+                    btn.innerText = "[ ENEMY TURN ]";
+                    btn.style.color = "#ff3333"; // 붉은색 경고
+                    btn.style.borderColor = "#cc0000";
+                    btn.style.background = "rgba(204, 0, 0, 0.15)";
+                    btn.style.boxShadow = "none";
                 }
+            }
+
+            // 2. 🎯 액션 버튼(타격, 저격, 기동) 활성화/비활성화 제어
+            const actionBtns = document.querySelectorAll('.action-btn');
+            actionBtns.forEach(button => {
+                // 내 턴이면 disabled 해제(false), 아니면 설정(true)
+                button.disabled = !isMyTurn;
+            });
+
+            // 3. 🛡️ 내 턴이 끝나면 조준경 및 가이드라인 즉시 강제 종료
+            if (!isMyTurn) {
+                renderSniperLines(false); // 가이드라인(하늘색) 끄기
+                
+                const scopeLayer = document.getElementById('scope-layer');
+                const reticleLayer = document.getElementById('reticle');
+                if (scopeLayer && reticleLayer) {
+                    scopeLayer.style.display = 'none';
+                    reticleLayer.style.display = 'none';
+                }
+                
+                // 액션 모드도 기본 'ATTACK'으로 리셋 (다음 턴에 조준경이 갑자기 뜨는 것 방지)
+                actionMode = 'ATTACK';
+                document.querySelectorAll('.action-btn').forEach(b => b.classList.remove('active'));
+                document.getElementById('btn-ATTACK').classList.add('active');
             }
         }
 
-        let maxRange = (b.weaponType === 'shotgun') ? 400 : 2000;
-        if (b.distanceTraveled > maxRange || b.x > camX + canvas.width * 1.5) destroy = true;
-        
-        if (destroy) bullets.splice(i, 1);
-    }
-}
+        // 💥 거친 폭발 생성 함수 (ATTACK 모드 전용)
+        function createRoughExplosion(x, y) {
+            const fragmentCount = 15;
+            const trailCount = 30; 
+            const colors = ['#ffffff', '#ffea00', '#ff9100', '#ff4500'];
 
-// --- 캔버스 총기 및 방패 고해상도 드로잉 함수 ---
-function drawWeapon(ctx, x, y, angle, type) {
-    ctx.save();
-    ctx.translate(x, y);
-    ctx.rotate(angle);
-    
-    if (Math.abs(angle) > Math.PI / 2) {
-        ctx.scale(1, -1);
-    }
-    
-    if (type === 'pistol') {
-        ctx.fillStyle = "#333"; 
-        ctx.fillRect(-4, -5, 18, 4.5);
-        ctx.fillStyle = "#1a1a1a"; 
-        ctx.fillRect(14, -4.5, 2, 3.5);
-        ctx.fillStyle = "#1a1a1a"; 
-        ctx.fillRect(-4, -0.5, 16, 3);
-        ctx.save(); 
-        ctx.rotate(15 * Math.PI / 180);
-        ctx.fillRect(-4, 0, 5.5, 10);
-        ctx.restore();
-        ctx.strokeStyle = "#1a1a1a"; 
-        ctx.lineWidth = 1.5;
-        ctx.strokeRect(2, 2.5, 6, 3);
-        ctx.fillStyle = "#1a1a1a"; 
-        ctx.fillRect(-2, -6, 2, 1);
-        ctx.fillRect(12, -6, 1, 1);
+            // 1. 거친 파편 생성
+            for (let i = 0; i < fragmentCount; i++) {
+                const fragment = document.createElement('div');
+                fragment.classList.add('fragment');
+                document.body.appendChild(fragment);
 
-    } else if (type === 'machineGun') {
-        ctx.fillStyle = "#333"; 
-        ctx.fillRect(-18, -4, 12, 5);
-        ctx.fillStyle = "#1a1a1a"; 
-        ctx.fillRect(-6, -4, 3, 2.5);
-        ctx.fillStyle = "#1a1a1a"; 
-        ctx.fillRect(-3, -2, 10, 5);
-        ctx.save(); 
-        ctx.translate(3, 3);
-        ctx.rotate(-5 * Math.PI / 180);
-        ctx.fillStyle = "#222";
-        ctx.fillRect(0, 0, 4, 10);
-        ctx.restore();
-        ctx.save(); 
-        ctx.translate(-3, 2);
-        ctx.rotate(20 * Math.PI / 180);
-        ctx.fillStyle = "#222";
-        ctx.fillRect(0, 0, 4, 9);
-        ctx.restore();
-        ctx.fillStyle = "#1a1a1a"; 
-        ctx.fillRect(-4, -6, 14, 4);
-        ctx.fillStyle = "#333"; 
-        ctx.fillRect(10, -6, 22, 3.5);
-        ctx.fillStyle = "#555"; 
-        ctx.fillRect(32, -4.5, 12, 1.5);
-        ctx.fillStyle = "#1a1a1a"; 
-        ctx.fillRect(28, -7, 2, 3);
-        ctx.fillStyle = "#555"; 
-        ctx.fillRect(44, -5, 3, 2.5);
-        ctx.fillStyle = "#1a1a1a"; 
-        ctx.fillRect(-2, -8, 2, 2);
+                const size = Math.random() * 10 + 5; 
+                const color = colors[Math.floor(Math.random() * colors.length)];
+                
+                const destinationX = (Math.random() - 0.5) * 400; 
+                const destinationY = (Math.random() - 0.5) * 400; 
+                const rotation = (Math.random() - 0.5) * 1080; 
+                const delay = Math.random() * 0.1; 
 
-    } else if (type === 'shotgun') {
-        ctx.fillStyle = "#6f4e37"; 
-        ctx.beginPath();
-        ctx.moveTo(-20, -2);
-        ctx.lineTo(-4, -2);
-        ctx.lineTo(-4, 2);
-        ctx.lineTo(-12, 5);
-        ctx.lineTo(-20, 5);
-        ctx.fill();
-        ctx.save(); 
-        ctx.rotate(20 * Math.PI / 180);
-        ctx.fillRect(-4, 0, 5, 8);
-        ctx.restore();
-        ctx.fillStyle = "#111"; 
-        ctx.fillRect(-4, -5, 14, 6);
-        ctx.fillStyle = "#555"; 
-        ctx.fillRect(10, -4, 35, 2);
-        ctx.fillStyle = "#333"; 
-        ctx.fillRect(10, -1.5, 33, 1.5);
-        ctx.fillStyle = "#6f4e37"; 
-        ctx.fillRect(15, -2.5, 14, 3.5);
-        ctx.fillStyle = "#111"; 
-        ctx.fillRect(42, -5, 1.5, 1);
+                fragment.style.width = `${size}px`;
+                fragment.style.height = `${size}px`;
+                fragment.style.background = color;
+                fragment.style.left = `${x}px`;
+                fragment.style.top = `${y}px`;
+                
+                fragment.style.setProperty('--tx', `${destinationX}px`);
+                fragment.style.setProperty('--ty', `${destinationY}px`);
+                fragment.style.setProperty('--tr', `${rotation}deg`);
 
-    } else if (type === 'sniper') {
-        ctx.fillStyle = "#4d2a1a"; 
-        ctx.beginPath();
-        ctx.moveTo(-18, -1);
-        ctx.lineTo(25, -1);
-        ctx.lineTo(25, 2);
-        ctx.lineTo(5, 3);
-        ctx.lineTo(-3, 3);
-        ctx.lineTo(-5, 6);
-        ctx.lineTo(-8, 6);
-        ctx.lineTo(-18, 3);
-        ctx.fill();
-        ctx.fillStyle = "#3d2115"; 
-        ctx.fillRect(8, -3, 20, 2);
-        ctx.fillStyle = "#151515"; 
-        ctx.fillRect(28, -2.5, 15, 1.5);
-        ctx.fillStyle = "#222222"; 
-        ctx.fillRect(-3, -4, 11, 3);
-        ctx.fillStyle = "#c0c0c0"; 
-        ctx.fillRect(-3, -3, 10, 1);
-        ctx.fillStyle = "#111"; 
-        ctx.fillRect(1, -2, 1.5, 4);
-        ctx.beginPath(); 
-        ctx.arc(1.75, 2, 1.5, 0, Math.PI*2);
-        ctx.fill();
-        ctx.fillStyle = "rgb(53, 53, 53)"; 
-        ctx.fillRect(-1, -7, 14, 2.5);
-        ctx.fillStyle = "#222222"; 
-        ctx.fillRect(12, -3.5, 1.5, 4);
-        ctx.fillRect(24, -3.5, 1.5, 4);
-        ctx.fillStyle = "#111"; 
-        ctx.fillRect(41, -4, 1.5, 1.5);
-        ctx.fillRect(5, -5, 3, 1); 
+                fragment.style.animation = `flyAway 0.5s cubic-bezier(0.1, 0.9, 0.2, 1) ${delay}s forwards`;
+                fragment.addEventListener('animationend', () => { fragment.remove(); });
+            }
 
-    } else if (type === 'melee') {
-        ctx.fillStyle = "#ff0000"; 
-        ctx.fillRect(0, -2, 28, 4); 
-        ctx.fillStyle = "#555";
-        ctx.fillRect(0, -3, 6, 6); 
+            // 2. 불꽃 잔상 생성
+            for (let i = 0; i < trailCount; i++) {
+                const trail = document.createElement('div');
+                trail.classList.add('trail');
+                document.body.appendChild(trail);
 
-    } else if (type === 'shield') {
-        ctx.fillStyle = "#333"; 
-        ctx.fillRect(-4, -4, 8, 8); 
-        
-        ctx.fillStyle = "rgba(0, 255, 255, 0.4)";
-        ctx.strokeStyle = "cyan";
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.moveTo(12, -25);
-        ctx.quadraticCurveTo(22, 0, 12, 25);
-        ctx.lineTo(6, 25);
-        ctx.quadraticCurveTo(16, 0, 6, -25);
-        ctx.closePath();
-        ctx.fill();
-        ctx.stroke();
+                const size = Math.random() * 6 + 2; 
+                const destinationX = (Math.random() - 0.5) * 500; 
+                const destinationY = (Math.random() - 0.5) * 500;
+                const delay = Math.random() * 0.3; 
 
-    } else {
-        ctx.fillStyle = "#333";
-        ctx.fillRect(0, -2, 10, 4); 
-        ctx.fillRect(0, 0, 4, 6);
-    }
-    ctx.restore();
-}
+                trail.style.width = `${size}px`;
+                trail.style.height = `${size}px`;
+                trail.style.left = `${x}px`;
+                trail.style.top = `${y}px`;
+                
+                trail.style.setProperty('--tx', `${destinationX}px`);
+                trail.style.setProperty('--ty', `${destinationY}px`);
 
-// --- 기호 기반 스틱맨 그리기 함수 (타 유저 닉네임 지원 추가) ---
-function drawStickman(ctx, entity, aimTarget, isPlayer, playerName = null) {
-    let aimAngle = Math.atan2(aimTarget.y - (entity.y - 38), aimTarget.x - entity.x);
-    let facing = (Math.cos(aimAngle) > 0) ? 1 : -1;
-    
-    ctx.strokeStyle = isPlayer ? (playerName ? "blue" : "black") : entity.color; // 다른 플레이어는 파란색 선
-    ctx.lineWidth = 4;
-    ctx.lineCap = "round";
-    ctx.lineJoin = "round";
-
-    let t = entity.walkTime || 0;
-    let walkOffset = (entity.isGrounded) ? Math.sin(t) * 8 : 0; 
-
-    // 멀티플레이어 숙이기 상태 동기화
-    let isCrouching = entity.isCrouching;
-
-    let pelvisX = entity.x;
-    let pelvisY = entity.y - 24;
-    let neckX = entity.x;
-    let neckY = entity.y - 42;
-
-    if (isCrouching) {
-        pelvisY += 15;
-        neckY += 15;
-    }
-
-    if (!['pistol', 'melee', 'shield'].includes(entity.weapon)) {
-        if (!isCrouching) {
-            pelvisX = entity.x - facing * 5;
-            neckX = entity.x + facing * 5;
+                trail.style.animation = `trailFade 0.8s ease-out ${delay}s forwards`;
+                trail.addEventListener('animationend', () => { trail.remove(); });
+            }
         }
-    }
 
-    let shoulderX = neckX - facing * 2;
-    let shoulderY = neckY + 4;
 
-    if (isCrouching) {
-        ctx.beginPath();
-        ctx.moveTo(pelvisX, pelvisY);
-        ctx.lineTo(pelvisX, entity.y);
-        ctx.lineTo(pelvisX - facing * 12, entity.y); 
-        ctx.stroke();
 
-        ctx.beginPath();
-        ctx.moveTo(pelvisX, pelvisY);
-        ctx.lineTo(pelvisX + facing * 12, pelvisY); 
-        ctx.lineTo(pelvisX + facing * 12, entity.y);
-        ctx.stroke();
-    } else {
-        ctx.beginPath();
-        ctx.moveTo(pelvisX, pelvisY);
-        ctx.lineTo(pelvisX - facing * 10 + walkOffset, entity.y); 
-        ctx.stroke();
+        socket.on('gameOver', data => {
+            gameStatus = 'ENDED';
+            const btn = document.getElementById('start-btn');
 
-        ctx.beginPath();
-        ctx.moveTo(pelvisX, pelvisY);
-        ctx.quadraticCurveTo(pelvisX + facing * 12, pelvisY + 12, pelvisX + facing * 6 - walkOffset, entity.y);
-        ctx.stroke();
-    }
+            // 🚨 이름(myName)이 아니라, 절대 겹치지 않는 고유 ID(socket.id)로 내가 이겼는지 판정!!
+            if (data.winnerId === socket.id) {
+                // 승리 연출 (내가 때려서 끝냈을 때)
+                const vScreen = document.getElementById('victory-screen');
+                vScreen.classList.add('active');
+                addGameLog(`[시스템] 🏆 전 구역 소탕 완료! 전투에서 승리했습니다!`);
+                
+                setTimeout(() => vScreen.classList.remove('active'), 3000);
+            } else {
+                // 패배 연출 (맞아서 끝났을 때)
+                const dScreen = document.getElementById('defeat-screen');
+                dScreen.classList.add('active');
+                addGameLog(`[시스템] 💥 본대 전멸... 전투에서 패배했습니다.`);
+                
+                setTimeout(() => dScreen.classList.remove('active'), 3000);
+            }
 
-    ctx.beginPath();
-    ctx.moveTo(pelvisX, pelvisY);
-    ctx.lineTo(neckX, neckY);
-    ctx.stroke();
+            // 연출이 완전히 끝나는 4.5초 뒤에 버튼을 '게임 종료(로비로)'로 변경
+            setTimeout(() => {
+                btn.disabled = false;
+                btn.innerText = "게임 종료"; 
+            }, 4500);
+        });
 
-    const headRadius = 7;
-    ctx.beginPath();
-    ctx.arc(neckX + facing * 2, neckY - headRadius, headRadius, 0, Math.PI * 2);
-    ctx.fillStyle = ctx.strokeStyle;
-    if (!isPlayer) { ctx.fill(); } else { ctx.stroke(); }
+        socket.on('rematchStarted', () => { 
+            myUnits = [];
+            isMyTurn = false;
+            gameStatus = "LOBBY";
+            selectedUnitType = null;
+            movingOriginalState = null;
+            inventory = { 'ㄷ':1, 'L':1, 'T':1, 'ㅗ':1, 'I':1, '1x1':1, '1x2':1, '📦':1, '💣':1 };
 
-    let isAiming = isPlayer ? (entity.shootTimer > 0 || (playerName == null ? mouse.isDown : true)) : true;
-    let finalAimAngle = aimAngle;
+            opponentMisses = []; // 🚨 [추가] 새 게임이 시작되면 빗나간 기록도 초기화!
+            explodedUnitsTracker.clear(); // 🚨 [신규 추가] 전손 기록 초기화!
+            
+            initGrids(); 
+            renderInventory(); 
+            
+            const btn = document.getElementById('start-btn');
+            btn.innerText = "SYSTEM READY"; 
+            btn.style.background = "rgba(5, 20, 10, 0.9)"; // 🚨 어두운 벙커색
+            btn.style.color = "#09ff00";
+            btn.style.borderColor = "#2ecc71";
+            btn.disabled = false;
+            
+            addGameLog("[시스템] 게임이 종료되었습니다. 모든 인원이 관전자로 이동합니다.");
+            document.getElementById('reset-btn').style.display = 'none';
+        });
 
-    if (isPlayer && entity.isReloading) {
-        finalAimAngle = Math.PI / 2; 
-    }
-
-    if (entity.attackTimer && entity.attackTimer > 0) {
-        finalAimAngle += facing * (Math.sin(entity.attackTimer * 0.4) * 1.5);
-    }
-
-    let recoilOffset = (isAiming && entity.shootTimer > 0 && !(isPlayer && entity.isReloading)) ? (Math.random() * 2) : 0;
-    
-    let handX = shoulderX + Math.cos(finalAimAngle) * (16 - recoilOffset);
-    let handY = shoulderY + Math.sin(finalAimAngle) * (16 - recoilOffset);
-
-    let elbowX = shoulderX + facing * 4;
-    let elbowY = shoulderY + 12;
-
-    if (['pistol', 'melee', 'shield'].includes(entity.weapon)) {
-        elbowX = (shoulderX + handX) / 2;
-        elbowY = (shoulderY + handY) / 2;
-    }
-
-    drawWeapon(ctx, handX, handY, finalAimAngle, entity.weapon);
-
-    if (!['pistol', 'melee', 'shield'].includes(entity.weapon)) {
-        let supportX = handX + Math.cos(finalAimAngle) * 14; 
-        let supportY = handY + Math.sin(finalAimAngle) * 14;
-        let elbow2X = shoulderX + facing * 10;
-        let elbow2Y = shoulderY + 14;
-
-        ctx.beginPath();
-        ctx.moveTo(shoulderX, shoulderY);
-        ctx.lineTo(elbow2X, elbow2Y);
-        ctx.lineTo(supportX, supportY);
-        ctx.stroke();
-    } else {
-        let swing = (Math.abs(entity.vx) > 0.1 && !isCrouching && !(isPlayer && entity.isReloading)) ? Math.sin(t + Math.PI) * 6 : 0;
-        let leftHandX = shoulderX - facing * 8 + swing; 
-        let leftHandY = shoulderY + 15; 
+        socket.on('systemMsg', msg => addGameLog("[시스템] " + msg));
         
-        ctx.beginPath();
-        ctx.moveTo(shoulderX, shoulderY);
-        ctx.lineTo(leftHandX, leftHandY); 
-        ctx.stroke();
-    }
-
-    ctx.beginPath();
-    ctx.moveTo(shoulderX, shoulderY);
-    ctx.lineTo(elbowX, elbowY); 
-    ctx.lineTo(handX, handY);   
-    ctx.stroke();
-
-    let muzzleOffset = (entity.weapon === 'sniper') ? 43 : (entity.weapon === 'shotgun') ? 45 : (entity.weapon === 'machineGun') ? 47 : 16;
-    
-    if (isPlayer && entity.shootTimer > 0 && !entity.isReloading && !['shield', 'melee'].includes(entity.weapon)) {
-        ctx.save();
-        ctx.translate(handX, handY);
-        ctx.rotate(finalAimAngle);
-        ctx.fillStyle = "orange";
-        ctx.beginPath(); ctx.arc(muzzleOffset + 2, -1, 4 + Math.random()*3, 0, Math.PI*2); ctx.fill();
-        ctx.fillStyle = "yellow";
-        ctx.beginPath(); ctx.arc(muzzleOffset + 2, -1, 2 + Math.random()*2, 0, Math.PI*2); ctx.fill();
-        ctx.restore();
-    }
-
-    if (isPlayer && !entity.isReloading && (!playerName && player.ammo[player.weapon] > 0 || playerName) && !['shield', 'melee'].includes(entity.weapon)) {
-        let muzzleX = handX + Math.cos(finalAimAngle) * muzzleOffset;
-        let muzzleY = handY + Math.sin(finalAimAngle) * muzzleOffset;
-        
-        ctx.strokeStyle = "rgba(255, 0, 0, 0.4)";
-        ctx.lineWidth = 1.5;
-        ctx.beginPath(); ctx.moveTo(muzzleX, muzzleY); ctx.lineTo(aimTarget.x, aimTarget.y); ctx.stroke();
-        
-        if (entity.weapon === 'sniper') {
-            ctx.fillStyle = "rgba(255, 0, 0, 0.5)";
-            ctx.beginPath(); ctx.arc(entity.x + Math.cos(aimAngle) * weapons.sniper.minRange, (entity.y - 38) + Math.sin(aimAngle) * weapons.sniper.minRange, 5, 0, Math.PI*2); ctx.fill();
+        function sendChat() {
+            const i = document.getElementById('chat-input');
+            if(i.value) socket.emit('sendChat', i.value);
+            i.value = "";
         }
-    }
+        socket.on('receiveChat', d => {
+            const l = document.getElementById('chat-log');
+            l.innerHTML += `<div>${d.name}: ${d.msg}</div>`;
+            l.scrollTop = l.scrollHeight;
+        });
 
-    if (isPlayer && entity.isReloading && !playerName) {
-        ctx.fillStyle = "white"; ctx.font = "bold 14px Arial"; ctx.textAlign = "center";
-        let percent = Math.floor(player.reloadProgress * 100);
-        ctx.fillText(`충전 중... ${percent}%`, entity.x, entity.y - 70);
-    }
-
-    // [추가] 다른 플레이어의 닉네임과 미니 체력바 렌더링
-    if (playerName) {
-        ctx.fillStyle = "white";
-        ctx.font = "bold 12px Arial";
-        ctx.textAlign = "center";
-        ctx.fillText(playerName, entity.x, entity.y - 70);
-
-        ctx.fillStyle = "red";
-        ctx.fillRect(entity.x - 15, entity.y - 65, 30, 4);
-        ctx.fillStyle = "#0f0";
-        ctx.fillRect(entity.x - 15, entity.y - 65, 30 * (Math.max(0, entity.hp) / entity.maxHp), 4);
-    }
-}
-
-// --- 렌더링 ---
-function draw() {
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    
-    canvas.style.cursor = 'none';
-
-    ctx.save();
-    ctx.translate(-camX, 0); 
-
-    ctx.fillStyle = "#111"; 
-    for (let chunk of terrainChunks) {
-        if (chunk.length === 0) continue;
+        socket.on('syncMovedUnit', data => {
+            if (!isPlayer) return; 
+            let unit = myUnits.find(u => u.cells.includes(data.oldIdx));
+            if (unit && data.newIdx !== undefined) {
+                unit.cells = [data.newIdx];
+            }
+            renderMyGrid();
+        });
         
-        ctx.beginPath();
-        ctx.moveTo(chunk[0].x, chunk[0].y);
-        for (let i = 1; i < chunk.length; i++) {
-            ctx.lineTo(chunk[i].x, chunk[i].y);
+        socket.on('updatePhrase', phrase => {
+            document.getElementById('phrase-display').innerText = `[ ${phrase} 프레이즈 ]`;
+        });
+
+        function addGameLog(m) {
+            const l = document.getElementById('game-log');
+            l.innerHTML += `<div>${m}</div>`;
+            l.scrollTop = l.scrollHeight;
         }
         
-        ctx.lineTo(chunk[chunk.length - 1].x, canvas.height + 100);
-        ctx.lineTo(chunk[0].x, canvas.height + 100);
-        ctx.closePath();
-        ctx.fill();
-        
-        ctx.strokeStyle = "#000";
-        ctx.lineWidth = 3;
-        ctx.beginPath();
-        ctx.moveTo(chunk[0].x, chunk[0].y);
-        for (let i = 1; i < chunk.length; i++) {
-            ctx.lineTo(chunk[i].x, chunk[i].y);
+        // --- [데이터 센터(설명창) 제어 함수] ---
+        function openManual() {
+            const layer = document.getElementById('manual-layer');
+            layer.style.display = 'block'; // 창 보이기
+            
+            // 매번 새로 열 때마다 로딩 애니메이션을 보고 싶다면 아래 한 줄 추가
+            document.getElementById('manual-frame').src = "manual.html";
         }
-        ctx.stroke();
-    }
 
-    for (let e of enemies) {
-        drawStickman(ctx, e, player, false);
-        
-        ctx.fillStyle = "red";
-        ctx.fillRect(e.x - e.width/2, e.y - 60, e.width, 5); 
-        ctx.fillStyle = "#0f0";
-        ctx.fillRect(e.x - e.width/2, e.y - 60, e.width * (Math.max(0, e.hp) / e.maxHp), 5);
-    }
-
-    // 내 캐릭터 렌더링
-    const mouseWorldPos = { x: mouse.x + camX, y: mouse.y };
-    drawStickman(ctx, player, mouseWorldPos, true);
-
-    // [추가] 같은 방 다른 유저 렌더링
-    for (let id in otherPlayers) {
-        let op = otherPlayers[id];
-        // 서버에서 받아온 조준 각도(aimAngle)를 기반으로 가짜 마우스 좌표(aimTarget) 생성
-        let opAimTarget = {
-            x: op.x + Math.cos(op.aimAngle || 0) * 100,
-            y: (op.y - 38) + Math.sin(op.aimAngle || 0) * 100
+        // 💡 중요: manual.html 안에서 레이더를 눌렀을 때 부모창을 닫기 위해 필요함
+        window.closeManualFromFrame = function() {
+            document.getElementById('manual-layer').style.display = 'none'; // 창 숨기기
         };
-        drawStickman(ctx, op, opAimTarget, true, op.name);
-    }
-
-    if (player.crouchStamina < player.maxCrouchStamina) {
-        let stamRatio = Math.max(0, player.crouchStamina) / player.maxCrouchStamina;
-        ctx.fillStyle = "rgba(0, 0, 0, 0.5)";
-        ctx.fillRect(player.x - 20, player.y - 75, 40, 6);
-        ctx.fillStyle = "#00BFFF"; 
-        ctx.fillRect(player.x - 20, player.y - 75, 40 * stamRatio, 6);
-        ctx.strokeStyle = "white";
-        ctx.lineWidth = 1;
-        ctx.strokeRect(player.x - 20, player.y - 75, 40, 6);
-    }
-
-    for (let b of bullets) {
-        ctx.fillStyle = b.color;
-        ctx.beginPath();
-        ctx.arc(b.x, b.y, b.weaponType === 'sniper' ? 5 : 3, 0, Math.PI * 2);
-        ctx.fill();
-    }
-
-    for (let s of sparks) {
-        ctx.fillStyle = "cyan";
-        ctx.beginPath();
-        ctx.arc(s.x, s.y, s.life / 3, 0, Math.PI * 2);
-        ctx.fill();
-    }
-
-    ctx.restore(); 
-
-    ctx.strokeStyle = "rgba(255, 0, 0, 0.8)";
-    ctx.lineWidth = 2;
-    
-    ctx.beginPath();
-    ctx.arc(mouse.x, mouse.y, 12, 0, Math.PI * 2);
-    ctx.stroke();
-
-    ctx.fillStyle = "red";
-    ctx.beginPath();
-    ctx.arc(mouse.x, mouse.y, 2, 0, Math.PI * 2);
-    ctx.fill();
-
-    ctx.beginPath();
-    ctx.moveTo(mouse.x, mouse.y - 20); ctx.lineTo(mouse.x, mouse.y - 8); 
-    ctx.moveTo(mouse.x, mouse.y + 20); ctx.lineTo(mouse.x, mouse.y + 8); 
-    ctx.moveTo(mouse.x - 20, mouse.y); ctx.lineTo(mouse.x - 8, mouse.y); 
-    ctx.moveTo(mouse.x + 20, mouse.y); ctx.lineTo(mouse.x + 8, mouse.y); 
-    ctx.stroke();
-}
-
-// --- 로그인 및 게임 시작 로직 ---
-document.getElementById('startButton').addEventListener('click', () => {
-    const nameInput = document.getElementById('playerNameInput').value.trim();
-    const roomInput = parseInt(document.getElementById('roomNumberInput').value);
-
-    // 유효성 검사
-    if (!nameInput) {
-        alert("이름을 입력해주세요!");
-        return;
-    }
-    if (isNaN(roomInput) || roomInput < 1 || roomInput > 9) {
-        alert("룸 번호는 1에서 9 사이의 숫자로 입력해주세요!");
-        return;
-    }
-
-    // 데이터 저장
-    globalPlayerName = nameInput;
-    globalRoomNumber = roomInput;
-
-    // 서버에 내 정보(이름, 방 번호)를 보내어 방에 입장
-    socket.emit('joinRoom', { name: globalPlayerName, room: globalRoomNumber });
-
-    // UI 변경
-    document.getElementById('loginScreen').style.display = 'none';
-    document.getElementById('gameCanvas').style.display = 'block';
-    document.getElementById('ui').style.display = 'block';
-
-    document.getElementById('playerInfoUI').innerText = `${globalPlayerName} (Room: ${globalRoomNumber})`;
-
-    // [핵심] 입력받은 룸 번호를 시드로 하여 양쪽 유저가 동일한 지형을 갖도록 초기화
-    terrainSeed = globalRoomNumber * 12345;
-    initTerrain();
-
-    // 게임 시작
-    isGameStarted = true;
-    lastEnemySpawn = Date.now();
-    gameLoop();
-});
-
-// 초기화 로직
-generateTerrain();
-
-</script>
+    </script>
 </body>
 </html>
