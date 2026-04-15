@@ -2161,7 +2161,7 @@
             }
         }
 
-        // 🚨 [신규 추가] 유닛 생존 여부에 따라 스킬 버튼을 켜고 끄는 함수
+        // 🚨 [완벽 수정본] 유닛 생존 여부에 따라 스킬 버튼을 켜고 끄는 함수
         function updateSkillButtons() {
             if (gameStatus !== 'PLAYING' || !myUnits) return;
 
@@ -2173,8 +2173,8 @@
             const mover = myUnits.find(u => u.type === '1x1');
             const isMoverAlive = mover && mover.cells.length > (mover.hitCells ? mover.hitCells.length : 0);
 
-            // SNIPE 버튼 시각적 제어
-            const btnSnipe = document.getElementById('btn-snipe'); // HTML의 저격 버튼 ID (다르다면 수정)
+            // 🚨 1. HTML의 버튼 ID와 동일하게 대소문자(btn-SNIPE) 완벽 일치!
+            const btnSnipe = document.getElementById('btn-SNIPE'); 
             if (btnSnipe) {
                 btnSnipe.disabled = !isSniperAlive;
                 btnSnipe.style.opacity = isSniperAlive ? "1" : "0.4";
@@ -2182,8 +2182,8 @@
                 if (!isSniperAlive) btnSnipe.title = "저격수(I) 전손: 스킬 사용 불가";
             }
 
-            // MOVE 버튼 시각적 제어
-            const btnMove = document.getElementById('btn-move'); // HTML의 기동 버튼 ID (다르다면 수정)
+            // 🚨 2. HTML의 버튼 ID와 동일하게 대소문자(btn-MOVE) 완벽 일치!
+            const btnMove = document.getElementById('btn-MOVE'); 
             if (btnMove) {
                 btnMove.disabled = !isMoverAlive;
                 btnMove.style.opacity = isMoverAlive ? "1" : "0.4";
@@ -2191,8 +2191,8 @@
                 if (!isMoverAlive) btnMove.title = "기동함선(1x1) 전손: 스킬 사용 불가";
             }
 
-            // 만약 파괴된 스킬을 이미 선택하고 있었다면, 강제로 '일반 포격(ATTACK)'으로 돌려버림
-            if ((actionType === 'SNIPE' && !isSniperAlive) || (actionType === 'MOVE' && !isMoverAlive)) {
+            // 🚨 3. 치명적인 버그 발생 지점! actionType을 actionMode로 수정
+            if ((actionMode === 'SNIPE' && !isSniperAlive) || (actionMode === 'MOVE' && !isMoverAlive)) {
                 setActionMode('ATTACK');
             }
         }
