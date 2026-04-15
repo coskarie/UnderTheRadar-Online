@@ -1501,6 +1501,10 @@
                                 }
                                 return;
                             } else {
+                                if (opponentMisses.includes(i)) {
+                                    addGameLog("[차단] 이 칸은 탐색되었습니다.");
+                                    return;
+                                }
                                 socket.emit('move1x1', { from: selected1x1Idx, to: i });
                                 selected1x1Idx = -1; renderMyGrid();
                                 return;
@@ -1643,7 +1647,11 @@
                     selected1x1Idx = -1; renderMyGrid();
                     return;
                 }
-                
+                if (opponentMisses.includes(idx)) {
+                    addGameLog("[차단] 이 칸은 탐색되었습니다.");
+                    selected1x1Idx = -1; renderMyGrid();
+                    return;
+                }
                 socket.emit('move1x1', { from: selected1x1Idx, to: idx });
                 selected1x1Idx = -1;
                 renderMyGrid();
@@ -2003,6 +2011,11 @@
             if(cells.includes(-1)) return;
             if(cells.some(c => myUnits.some(u => u.cells.includes(c)))) return;
 
+            if(cells.some(c => opponentMisses.includes(c))) {
+                addGameLog("[차단] 이 칸은 탐색되었습니다.");
+                return;
+            }
+
             // 🚨 4번 규칙 (UNDO 마법): 놓으려는 위치가 스냅샷(흰색 껍데기)과 완전히 일치하는지 비교
             let isOriginalPos = false;
             if (gameStatus === 'MOVING' && movingOriginalState) {
@@ -2129,10 +2142,8 @@
                 for(let i=0; i<140; i++) {
                     const cX = i % 14;
                     const cY = Math.floor(i / 14);
-                    // 거리 2칸 이내이면서, 자기 자신이 아닌 칸
                     if (Math.abs(pX - cX) <= 2 && Math.abs(pY - cY) <= 2 && i !== selected1x1Idx) {
-                        // 유닛이 없는 빈칸에만 초록색 표시
-                        if (!myUnits.some(u => u.cells.includes(i))) {
+                        if (!myUnits.some(u => u.cells.includes(i)) && !opponentMisses.includes(i)) {
                             cells[i].classList.add('move-highlight');
                         }
                     }
@@ -2276,7 +2287,9 @@
             
             const cells = getPlacementCells(selectedUnitType, idx);
             const myG = document.getElementById('my-grid');
-            const invalid = cells.includes(-1) || cells.some(c => myUnits.some(u => u.cells.includes(c)));
+            const invalid = cells.includes(-1) || 
+                cells.some(c => myUnits.some(u => u.cells.includes(c))) || 
+                cells.some(c => opponentMisses.includes(c));
             
             // 🚨 3번 규칙: MOVING 단계면 마스터키(보라색)로 시각적 피드백 제공
             const ghostClass = (gameStatus === 'MOVING') ? 'ghost-purple' : 'ghost';
