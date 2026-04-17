@@ -563,28 +563,32 @@ io.on('connection', (socket) => {
         updateRoomInfo(currentRoom); // 관전자 화면 갱신
     });
 
-    // 7. 게임 종료 및 로비 초기화 로직
+    // 7. 게임 종료 및 로비 초기화 로직 (완벽 포맷 버전)
     socket.on('requestRematch', () => {
         const room = rooms[currentRoom];
         if (!room || room.gameState !== 'ENDED') return;
 
+        // 1. 방 상태 초기화
         room.gameState = 'LOBBY';
         room.phraseCount = 0;
         room.turn = null;
+        room.bonusBox = null; // 혹시 모를 보급 상자 데이터도 청소
 
+        // 2. 플레이어 데이터 완벽 포맷 (관전자로 쫓아내지 않음!)
         room.players.forEach(p => {
-            room.spectators.push({ id: p.id, name: p.name });
+            p.isReady = false; // 레디 상태 해제
+            p.placed = false;  // 🚨 가장 중요: 배치 완료 상태 리셋
+            p.units = [];      // 🚨 이전 판 유닛 위치 데이터 삭제
         });
-        
-        room.players = [];
 
+        // ❌ 기존에 있던 관전자로 보내는 로직(room.spectators.push...)은 아예 삭제합니다!
+
+        // 3. 클라이언트에 갱신 데이터 전송
         io.to(currentRoom).emit('rematchStarted');
         updateRoomInfo(currentRoom);
-        io.to(currentRoom).emit('systemMsg', "방이 초기화되었습니다. 다시 게임을 하려면 [플레이어로 가기]를 눌러주세요!");
-    });
-
-    socket.on('sendChat', (msg) => {
-        if (currentRoom) io.to(currentRoom).emit('receiveChat', { name: userName, msg });
+        
+        // 4. 시스템 메시지 변경
+        io.to(currentRoom).emit('systemMsg', "방이 초기화되었습니다. 다시 게임을 하려면 [SYSTEM READY]를 눌러주세요!");
     });
 
     // 8. 접속 종료 로직
